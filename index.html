@@ -1,0 +1,4012 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>イントロクイズ - スマホQR早押し対応版</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0f19;
+    --panel: #131a2a;
+    --panel-light: #1c253b;
+    --border: #2a3652;
+    --text: #f8fafc;
+    --muted: #94a3b8;
+    --accent: #f59e0b;
+    --accent-hover: #d97706;
+    --green: #10b981;
+    --red: #ef4444;
+    --blue: #3b82f6;
+    --purple: #8b5cf6;
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', system-ui, -apple-system, sans-serif;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  button {
+    cursor: pointer;
+    border: none;
+    outline: none;
+    transition: transform 0.12s ease, background-color 0.14s ease, opacity 0.14s ease;
+    font-weight: 800;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  input, select {
+    background: #0d1322;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 12px;
+    font-size: 14px;
+  }
+  input:focus, select:focus {
+    border-color: var(--accent);
+    outline: none;
+  }
+
+  /* ================= HOST HEADER ================= */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 40;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .brand-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #f59e0b, #ef4444);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+  }
+  .brand h1 {
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+  }
+  .room-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 3px;
+    flex-wrap: wrap;
+  }
+  .room-id-pill {
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 800;
+  }
+  .conn-dot-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #34d399;
+    background: rgba(16, 185, 129, 0.14);
+    padding: 2px 9px;
+    border-radius: 99px;
+  }
+  .conn-dot-badge.warn {
+    color: #fbbf24;
+    background: rgba(245, 158, 11, 0.16);
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .btn-nav {
+    padding: 9px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    background: var(--panel-light);
+    color: var(--text);
+    border: 1px solid var(--border);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-nav:hover {
+    background: #263350;
+  }
+  .btn-qr {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff;
+    border: none;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+  }
+  .btn-qr:hover {
+    filter: brightness(1.1);
+  }
+  .btn-nav.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+  }
+  .badge-count {
+    background: rgba(0, 0, 0, 0.35);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-size: 11px;
+  }
+
+  /* ================= HOST LAYOUT ================= */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 16px;
+    padding: 16px 20px;
+    max-width: 1480px;
+    margin: 0 auto;
+  }
+  @media (max-width: 960px) {
+    .main-grid {
+      grid-template-columns: 1fr;
+      padding: 12px;
+    }
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 18px;
+  }
+
+  /* Track Navigation */
+  .track-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    gap: 8px;
+  }
+  .track-pill {
+    background: rgba(245, 158, 11, 0.14);
+    color: var(--accent);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    padding: 6px 20px;
+    border-radius: 99px;
+    font-weight: 900;
+    font-size: 15px;
+    text-align: center;
+  }
+
+  /* Stage Vinyl & Reveal */
+  .stage-box {
+    background: #0d1322;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    min-height: 215px;
+    position: relative;
+    overflow: hidden;
+  }
+  @media (max-width: 600px) {
+    .stage-box {
+      flex-direction: column;
+      text-align: center;
+    }
+  }
+  .vinyl-wrap {
+    position: relative;
+    width: 150px;
+    height: 150px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .vinyl {
+    width: 146px;
+    height: 146px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #1e293b 0%, #0f172a 32%, #1e293b 34%, #090d16 65%, #1e293b 67%, #090d16 100%);
+    border: 3px solid #334155;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65);
+  }
+  .vinyl.spinning {
+    animation: spin 2.8s linear infinite;
+  }
+  @keyframes spin {
+    100% { transform: rotate(360deg); }
+  }
+  .vinyl-label {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f59e0b, #ef4444);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border: 2px solid #fff;
+  }
+  .vinyl-label img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .vinyl-hole {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #0d1322;
+    position: absolute;
+  }
+
+  .cover-reveal {
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 2px solid var(--accent);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75);
+    display: none;
+    background: #1e293b;
+  }
+  .cover-reveal img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .song-meta {
+    flex: 1;
+    min-width: 0;
+  }
+  .status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 800;
+    background: #1e293b;
+    color: #cbd5e1;
+    margin-bottom: 10px;
+  }
+  .status-chip.playing {
+    background: rgba(16, 185, 129, 0.22);
+    color: #34d399;
+  }
+  .status-chip.buzzed {
+    background: rgba(239, 68, 68, 0.28);
+    color: #fca5a5;
+    animation: pulseChip 0.8s infinite alternate;
+  }
+  .status-chip.revealed {
+    background: rgba(245, 158, 11, 0.25);
+    color: #fcd34d;
+  }
+  @keyframes pulseChip {
+    from { opacity: 0.75; }
+    to { opacity: 1; }
+  }
+
+  .song-title {
+    font-size: 28px;
+    font-weight: 900;
+    line-height: 1.25;
+    margin-bottom: 6px;
+    word-break: break-word;
+  }
+  .song-artist {
+    font-size: 17px;
+    color: var(--accent);
+    font-weight: 800;
+    margin-bottom: 10px;
+  }
+
+  /* Progress & Audio */
+  .progress-wrap {
+    margin: 16px 0;
+  }
+  .progress-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .seek-slider {
+    flex: 1;
+    accent-color: var(--accent);
+    height: 6px;
+    cursor: pointer;
+  }
+  .sub-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .kbd {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 5px;
+    padding: 1px 6px;
+    font-size: 11px;
+    color: #e2e8f0;
+  }
+
+  /* Play Action Buttons */
+  .play-actions {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr 1fr 1fr;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  @media (max-width: 760px) {
+    .play-actions { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 480px) {
+    .play-actions { grid-template-columns: 1fr; }
+  }
+  .btn-big {
+    padding: 15px 12px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn-play {
+    background: var(--accent);
+    color: #000;
+  }
+  .btn-play:hover:not(:disabled) {
+    background: var(--accent-hover);
+  }
+  .btn-chorus {
+    background: #4f46e5;
+    color: #fff;
+  }
+  .btn-chorus:hover:not(:disabled) {
+    background: #4338ca;
+  }
+  .btn-buzz-lock {
+    background: #334155;
+    color: #f8fafc;
+    border: 2px solid #475569;
+  }
+  .btn-buzz-lock.open {
+    background: #10b981;
+    color: #000;
+    border-color: #34d399;
+    box-shadow: 0 0 18px rgba(16, 185, 129, 0.45);
+  }
+  .btn-reveal {
+    background: #e11d48;
+    color: #fff;
+  }
+  .btn-reveal:hover {
+    background: #be123c;
+  }
+
+  /* Judge Panel & Resume Banner */
+  .judge-box {
+    margin-top: 14px;
+    border-radius: 16px;
+    padding: 18px;
+    border: 2px solid var(--accent);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(239, 68, 68, 0.16));
+    display: none;
+  }
+  .judge-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .buzzed-team-name {
+    font-size: 26px;
+    font-weight: 900;
+  }
+  .buzz-badges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .buzz-time-badge {
+    background: #000;
+    color: #fde047;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 900;
+  }
+  .answer-timer-badge {
+    background: #ef4444;
+    color: #fff;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 900;
+  }
+  .runner-up-list {
+    font-size: 12px;
+    color: #cbd5e1;
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+  .judge-btns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  @media (max-width: 600px) {
+    .judge-btns { grid-template-columns: 1fr; }
+  }
+  .btn-correct {
+    background: var(--green);
+    color: #000;
+    padding: 15px;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 900;
+  }
+  .btn-wrong {
+    background: var(--red);
+    color: #fff;
+    padding: 15px;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 900;
+  }
+  .btn-cancel-buzz {
+    background: #334155;
+    color: #f8fafc;
+    border: 1px solid #475569;
+    padding: 11px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 800;
+    margin-top: 10px;
+    width: 100%;
+  }
+  .btn-cancel-buzz:hover {
+    background: #475569;
+  }
+
+  .resume-banner {
+    margin-top: 14px;
+    border-radius: 16px;
+    padding: 18px;
+    border: 2px dashed var(--accent);
+    background: rgba(245, 158, 11, 0.12);
+    text-align: center;
+    display: none;
+  }
+  .btn-resume {
+    background: var(--accent);
+    color: #000;
+    padding: 14px 28px;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 900;
+    margin-top: 10px;
+    box-shadow: 0 6px 20px rgba(245, 158, 11, 0.35);
+  }
+
+  /* One-Screen Split Buzzer Grid */
+  .split-buzzer-panel {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    display: none;
+  }
+  .split-buzzer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .btn-split-team {
+    padding: 18px 10px;
+    border-radius: 14px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 900;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  .btn-split-team:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    filter: grayscale(0.8);
+  }
+
+  /* Right Scoreboard */
+  .score-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .score-header h2 {
+    font-size: 17px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .team-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .team-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: #0d1322;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px;
+    transition: all 0.2s;
+  }
+  .team-row.locked {
+    opacity: 0.5;
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, 0.08);
+  }
+  .team-row.buzzed {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35);
+  }
+  .team-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+  .rank-badge {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: 14px;
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .team-info-name {
+    font-size: 15px;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .team-info-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .team-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .btn-pt {
+    background: var(--panel-light);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+  }
+  .btn-pt.plus {
+    color: #34d399;
+  }
+  .score-val {
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--accent);
+    min-width: 54px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ================= SETTINGS VIEW ================= */
+  .settings-wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 16px 20px;
+    display: none;
+  }
+  .settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    gap: 16px;
+  }
+  @media (max-width: 900px) {
+    .settings-grid { grid-template-columns: 1fr; }
+  }
+  .setting-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #0d1322;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .points-rule-box {
+    background: #0d1322;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .points-rule-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .track-edit-card {
+    background: #0d1322;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .track-edit-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .track-edit-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .track-time-fields {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  @media (max-width: 600px) {
+    .track-edit-fields { grid-template-columns: 1fr; }
+  }
+  .file-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* ================= QR MODAL (CLEAN VERTICAL BLOCK LAYOUT) ================= */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.78);
+    backdrop-filter: blur(4px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 16px;
+  }
+  .modal-card {
+    display: block;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    max-width: 460px;
+    width: 100%;
+    padding: 24px;
+    text-align: center;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
+    max-height: 92vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .qr-box {
+    background: #ffffff;
+    padding: 18px;
+    border-radius: 16px;
+    display: inline-block;
+    margin: 14px auto;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+  .qr-box svg {
+    display: block;
+    width: 240px;
+    height: 240px;
+  }
+  .url-override-box {
+    background: #0d1322;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+    margin-top: 12px;
+    text-align: left;
+  }
+  .url-override-box label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .url-input-row {
+    display: flex;
+    gap: 6px;
+  }
+  .url-input-row input {
+    flex: 1;
+    font-size: 12px;
+    padding: 7px 10px;
+  }
+
+  /* ================= SMARTPHONE / CHROMEBOOK PLAYER VIEW (?room=XXXX) ================= */
+  .mobile-app {
+    display: none;
+    min-height: 100vh;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 10px 14px 20px;
+    max-width: 520px;
+    margin: 0 auto;
+  }
+  .mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px 14px;
+  }
+  .mobile-room-tag {
+    font-size: 13px;
+    font-weight: 900;
+    color: var(--accent);
+  }
+  .btn-mobile-reconnect {
+    background: var(--panel-light);
+    color: #e2e8f0;
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 800;
+  }
+  .team-select-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 6px;
+  }
+  .btn-select-team {
+    padding: 16px 20px;
+    border-radius: 16px;
+    font-size: 19px;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .buzzer-stage {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .massive-buzzer {
+    flex: 1;
+    min-height: 290px;
+    border-radius: 28px;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-size: 32px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    box-shadow: 0 14px 0 rgba(0, 0, 0, 0.45), 0 20px 40px rgba(0, 0, 0, 0.6);
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    user-select: none;
+  }
+  .massive-buzzer:active:not(:disabled) {
+    transform: translateY(8px);
+    box-shadow: 0 6px 0 rgba(0, 0, 0, 0.45);
+  }
+  .massive-buzzer:disabled {
+    opacity: 0.48;
+    filter: grayscale(0.75);
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+  .buzzer-subtext {
+    font-size: 15px;
+    font-weight: 700;
+    opacity: 0.95;
+    padding: 0 16px;
+    text-align: center;
+    line-height: 1.45;
+  }
+  .btn-mobile-withdraw {
+    background: linear-gradient(135deg, #334155, #1e293b);
+    color: #fde047;
+    border: 2px solid #f59e0b;
+    padding: 14px;
+    border-radius: 16px;
+    font-size: 15px;
+    font-weight: 900;
+    text-align: center;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  }
+
+  /* Toast & Confetti */
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: #fff;
+    border: 1px solid var(--accent);
+    padding: 10px 20px;
+    border-radius: 99px;
+    font-size: 13px;
+    font-weight: 800;
+    z-index: 200;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+    max-width: 90vw;
+    text-align: center;
+  }
+  .toast.show {
+    opacity: 1;
+  }
+  #confettiCanvas {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 150;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="confettiCanvas"></canvas>
+<div id="toast" class="toast"></div>
+
+<!-- ===================================================================== -->
+<!-- 1. HOST PC / PROJECTOR VIEW                                           -->
+<!-- ===================================================================== -->
+<div id="hostApp">
+  <header class="header">
+    <div class="brand">
+      <div class="brand-icon">🎵</div>
+      <div>
+        <h1>イントロクイズ</h1>
+        <div class="room-status-row">
+          <span class="room-id-pill">ROOM: <span id="hostRoomIdDisplay">----</span></span>
+          <span id="hostConnBadge" class="conn-dot-badge warn">● 接続準備中...</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button type="button" class="btn-nav btn-qr" onclick="openQrModal()">
+        📱 スマホQR接続 <span class="badge-count" id="totalDevicesBadge">0台</span>
+      </button>
+      <button type="button" class="btn-nav" id="btnSplitToggle" onclick="toggleSplitBuzzer()">
+        🎛 1画面スイッチ: OFF
+      </button>
+      <button type="button" class="btn-nav active" id="tabQuizBtn" onclick="switchHostTab('quiz')">
+        🎤 クイズ本番
+      </button>
+      <button type="button" class="btn-nav" id="tabSettingsBtn" onclick="switchHostTab('settings')">
+        ⚙ 曲・チーム設定
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN QUIZ VIEW -->
+  <div id="quizView" class="main-grid">
+    <!-- Left Column: Stage & Controls -->
+    <div class="card">
+      <div class="track-nav">
+        <button type="button" class="btn-nav" onclick="changeTrack(-1)">◀ 前の曲</button>
+        <div class="track-pill" id="trackCounterPill">第1問 / 全5問</div>
+        <button type="button" class="btn-nav" onclick="changeTrack(1)">次の曲 ▶</button>
+      </div>
+
+      <div class="stage-box">
+        <div class="vinyl-wrap">
+          <div class="vinyl" id="vinylDisc">
+            <div class="vinyl-label" id="vinylLabel">🎶</div>
+            <div class="vinyl-hole"></div>
+          </div>
+          <div class="cover-reveal" id="coverRevealBox">
+            <img id="coverRevealImg" src="" alt="ジャケット">
+          </div>
+        </div>
+
+        <div class="song-meta">
+          <div class="status-chip" id="stageStatusChip">🔒 早押しロック中（「解答ロック解除」で受付開始）</div>
+          <div class="song-title" id="stageSongTitle">？？？？？？</div>
+          <div class="song-artist" id="stageSongArtist">アーティスト：？？？</div>
+        </div>
+      </div>
+
+      <!-- Progress & Audio Controls -->
+      <div class="progress-wrap">
+        <div class="progress-bar-row">
+          <span id="timeCurrent">0:00</span>
+          <input type="range" id="seekSlider" class="seek-slider" min="0" max="100" value="0" oninput="onSeekInput(this.value)">
+          <span id="timeDuration">0:24</span>
+        </div>
+        <div class="sub-controls">
+          <div>ショートカット: <span class="kbd">Space</span> 再生/停止 ・ <span class="kbd">1</span>〜<span class="kbd">8</span> 早押し</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span>🔊</span>
+            <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="0.85" style="width:90px;accent-color:var(--accent);" oninput="onVolumeChange(this.value)">
+          </div>
+        </div>
+      </div>
+
+      <!-- Primary MC Buttons -->
+      <div class="play-actions">
+        <button type="button" class="btn-big btn-play" id="btnMainPlay" onclick="togglePlayPause()">
+          ▶ イントロ再生
+        </button>
+        <button type="button" class="btn-big btn-chorus" id="btnChorusPlay" onclick="playFromChorus()">
+          🎵 サビ頭出し再生
+        </button>
+        <button type="button" class="btn-big btn-buzz-lock" id="btnBuzzOpenToggle" onclick="toggleBuzzerOpen()">
+          🔒 解答ロック解除
+        </button>
+        <button type="button" class="btn-big btn-reveal" onclick="revealAnswer(true)">
+          💡 正解オープン
+        </button>
+      </div>
+
+      <!-- Buzz Judging Panel -->
+      <div class="judge-box" id="judgeBox">
+        <div class="judge-top">
+          <div>
+            <div style="font-size:12px;color:#fde047;font-weight:800;">🚨 早押し解答権獲得！</div>
+            <div class="buzzed-team-name" id="buzzedTeamTitle">Aチーム（紅組）</div>
+          </div>
+          <div class="buzz-badges">
+            <span class="buzz-time-badge" id="buzzReactionBadge">⏱ 0.00秒</span>
+            <span class="answer-timer-badge" id="answerCountdownBadge">残り 10秒</span>
+          </div>
+        </div>
+        <div class="runner-up-list" id="runnerUpList"></div>
+        <div class="judge-btns">
+          <button type="button" class="btn-correct" onclick="judgeAnswer(true)">
+            ⭕ 正解！（+<span id="judgePointsLabel">10</span>pt ＆ サビ再生）
+          </button>
+          <button type="button" class="btn-wrong" id="btnJudgeWrong" onclick="judgeAnswer(false)">
+            ❌ 不正解（お手つきロック）
+          </button>
+        </div>
+        <button type="button" class="btn-cancel-buzz" onclick="cancelBuzz()">
+          ↩ 誤タップ取り下げ（ロック・減点なしで音楽再開）
+        </button>
+      </div>
+
+      <!-- Wrong Answer Resume Banner -->
+      <div class="resume-banner" id="resumeBanner">
+        <div style="font-size:15px;font-weight:900;color:#fca5a5;" id="resumeBannerText">
+          ❌ 不正解！お手つきロックしました（音楽は一時停止中です）
+        </div>
+        <div style="font-size:12px;color:#cbd5e1;margin-top:4px;">
+          他のチームもまだ早押し可能です。司会者のタイミングで再開してください。
+        </div>
+        <button type="button" class="btn-resume" onclick="resumeAfterWrong()">
+          ▶ クリックして曲の続きをリスタート！（Spaceキー）
+        </button>
+      </div>
+
+      <!-- Optional 1-Screen Split Buzzer -->
+      <div class="split-buzzer-panel" id="splitBuzzerPanel">
+        <div style="font-size:12px;color:var(--muted);font-weight:800;">🎛 1画面早押しスイッチ（早押し受付中のみ押せます）</div>
+        <div class="split-buzzer-grid" id="splitBuzzerGrid"></div>
+      </div>
+    </div>
+
+    <!-- Right Column: Team Scoreboard -->
+    <div class="card">
+      <div class="score-header">
+        <h2>🏆 チームスコアボード</h2>
+        <button type="button" class="btn-nav" onclick="unlockAllTeams()">🔓 ロック全解除</button>
+      </div>
+      <div class="team-list" id="scoreboardList"></div>
+    </div>
+  </div>
+
+  <!-- SETTINGS VIEW -->
+  <div id="settingsView" class="settings-wrap">
+    <div class="settings-grid">
+      <!-- Team Configuration -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <h2 style="font-size:17px;font-weight:900;">👥 チーム設定（2〜8チーム）</h2>
+          <button type="button" class="btn-nav" onclick="addTeam()">＋ チーム追加</button>
+        </div>
+        <div class="points-rule-box">
+          <div class="points-rule-row">
+            <span style="font-size:12px;font-weight:800;color:#fbbf24;">🏆 正解得点は右側の「出題リスト設定」から曲ごとに個別設定できます</span>
+          </div>
+          <div class="points-rule-row">
+            <label style="font-size:13px;font-weight:800;color:#fca5a5;">❌ お手付き（不正解）マイナス：</label>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:14px;font-weight:900;color:#ef4444;">-</span>
+              <input type="number" id="penaltyPerWrongInput" value="0" min="0" max="100" style="width:84px;" onchange="updatePenaltySetting(this.value)">
+              <span style="font-size:13px;color:var(--muted);">pt（0で減点なし）</span>
+            </div>
+          </div>
+        </div>
+        <div id="teamSettingsList"></div>
+      </div>
+
+      <!-- Tracklist Configuration -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+          <h2 style="font-size:17px;font-weight:900;">🎼 出題リスト設定</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <label class="btn-nav" style="cursor:pointer;">
+              📁 曲ファイル一括追加
+              <input type="file" accept="audio/*" multiple style="display:none;" onchange="bulkUploadTracks(this.files)">
+            </label>
+            <button type="button" class="btn-nav" onclick="addBlankTrack()">＋ 曲を追加</button>
+          </div>
+        </div>
+        <!-- Excelリスト枠一括読み込み＆テンプレート書き出し -->
+        <div style="background:#0d1322;border:1px solid rgba(56,189,248,0.45);border-radius:12px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <div style="font-size:12px;color:#7dd3fc;font-weight:800;">
+            📊 Excelで曲リスト枠を一括作成 → あとから音源・画像を当てはめ
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="btn-nav" style="background:#1e293b;color:#7dd3fc;border:1px solid rgba(56,189,248,0.4);" onclick="exportTracksExcel()">
+              📤 Excel枠書き出し
+            </button>
+            <label class="btn-nav" style="background:#0369a1;color:#fff;border:none;cursor:pointer;">
+              📥 Excelリスト読み込み
+              <input type="file" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importTracksExcel(event)">
+            </label>
+          </div>
+        </div>
+        <!-- まるごと設定バックアップ -->
+        <div style="background:#0d1322;border:1px solid rgba(245,158,11,0.4);border-radius:12px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <div style="font-size:12px;color:#fde68a;font-weight:800;">
+            💾 まるごと設定バックアップ（音源・画像・得点・チーム全保存）
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="btn-nav" style="background:#059669;color:#fff;border:none;" onclick="exportFullConfig()">
+              📤 まるごと書き出し
+            </button>
+            <label class="btn-nav" style="background:#0284c7;color:#fff;border:none;cursor:pointer;">
+              📥 まるごと読み込み
+              <input type="file" accept=".json,application/json" style="display:none;" onchange="importFullConfig(event)">
+            </label>
+          </div>
+        </div>
+        <div id="trackSettingsList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================================== -->
+<!-- QR CONNECTION MODAL                                                   -->
+<!-- ===================================================================== -->
+<div class="modal-backdrop" id="qrModal" onclick="if(event.target===this) closeQrModal()">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2 style="font-size:18px;font-weight:900;">📱 スマホ・Chromebook QR接続</h2>
+      <button type="button" class="btn-nav" onclick="closeQrModal()">✕ 閉じる</button>
+    </div>
+    <p style="font-size: 13px; color: var(--muted); line-height: 1.5;">
+      参加者のスマホ・Chromebookのカメラで下のQRコードを読み取ると、専用の早押しスイッチ画面が開きます。
+    </p>
+    <p style="font-size: 11px; color: #93c5fd; margin-top: 6px; line-height: 1.5;">
+      💡 Chromebookで読み取る場合は、カメラアプリの歯車アイコンから「QRコードのスキャン」をONにしてください。
+    </p>
+
+    <div id="localFileWarning" style="display:none;background:rgba(239,68,68,0.18);border:1px solid #ef4444;color:#fca5a5;font-size:12px;padding:10px;border-radius:10px;margin-top:10px;text-align:left;line-height:1.5;">
+      ⚠️ 現在プレビュー／ローカル環境で開かれています。外部端末から接続するには、GitHub PagesやNetlify Drop等のWebサーバーにアップロードして <b>https://〜</b> の公開URLで開いてください。
+    </div>
+
+    <div class="qr-box" id="qrSvgContainer"></div>
+
+    <div style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+      <span style="font-size:14px;font-weight:900;color:var(--accent);">ROOM ID: <span id="modalRoomId">----</span></span>
+      <button type="button" class="btn-nav" onclick="regenerateRoomId()">🔄 ID再発行</button>
+      <button type="button" class="btn-nav" onclick="copyShareUrl()">📋 URLコピー</button>
+    </div>
+
+    <div>
+      <a id="testPhoneLink" href="#" target="_blank" style="color:#818cf8;font-size:13px;font-weight:800;text-decoration:underline;">
+        🔗 別タブでスマホ参加画面をテスト開く ↗
+      </a>
+    </div>
+
+    <div class="url-override-box">
+      <label>🌐 公開URLベース（別サーバーに置いた場合のみ編集）</label>
+      <div class="url-input-row">
+        <input type="text" id="baseUrlInput" placeholder="https://example.com/index.html" onchange="refreshQrCode()">
+        <button type="button" class="btn-nav" onclick="refreshQrCode()">更新</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================================== -->
+<!-- 2. SMARTPHONE / CHROMEBOOK PLAYER VIEW (?room=XXXX)                   -->
+<!-- ===================================================================== -->
+<div id="mobileApp" class="mobile-app">
+  <div class="mobile-header">
+    <div>
+      <div style="font-size:16px;font-weight:900;">🎵 イントロ早押し</div>
+      <div id="mobileConnStatus" style="font-size:12px;color:#fbbf24;margin-top:2px;">● PCホストへ接続中...</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div class="mobile-room-tag">ROOM: <span id="mobileRoomDisplay">----</span></div>
+      <button type="button" class="btn-mobile-reconnect" onclick="manualMobileReconnect()">🔄 再接続</button>
+    </div>
+  </div>
+
+  <!-- Manual Room ID Fallback -->
+  <div id="mobileManualConnect" style="display:none;background:var(--panel);padding:16px;border-radius:16px;border:1px solid var(--border);margin-bottom:4px;">
+    <div style="font-size:14px;font-weight:800;margin-bottom:8px;">PC画面に表示されている4桁のROOM IDを入力</div>
+    <div style="display:flex;gap:8px;">
+      <input type="tel" id="manualRoomInput" maxlength="4" placeholder="例: 3717" style="flex:1;font-size:20px;font-weight:900;text-align:center;letter-spacing:4px;">
+      <button type="button" class="btn-big btn-play" style="padding:10px 20px;" onclick="connectManualRoom()">接続</button>
+    </div>
+  </div>
+
+  <!-- Step 1: Team Selection -->
+  <div id="mobileTeamSelectStep">
+    <div style="font-size:14px;font-weight:800;color:#e2e8f0;margin-bottom:4px;">参加するチームをタップしてください：</div>
+    <div class="team-select-grid" id="mobileTeamGrid"></div>
+  </div>
+
+  <!-- Step 2: Massive Buzzer Screen -->
+  <div id="mobileBuzzerStep" class="buzzer-stage" style="display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--panel);padding:12px 16px;border-radius:14px;border:1px solid var(--border);">
+      <div>
+        <div style="font-size:11px;color:var(--muted);">あなたのチーム</div>
+        <div id="mobileMyTeamName" style="font-size:18px;font-weight:900;">Aチーム</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:11px;color:var(--muted);">現在のスコア</div>
+        <div id="mobileMyTeamScore" style="font-size:22px;font-weight:900;color:var(--accent);">0 pt</div>
+      </div>
+    </div>
+
+    <button type="button" id="massiveBuzzerBtn" class="massive-buzzer" disabled onclick="handleMobileBuzz()">
+      <span id="buzzerMainText">🔒 解答ロック中</span>
+      <span id="buzzerSubText" class="buzzer-subtext">司会者がロックを解除すると押せます</span>
+    </button>
+
+    <button type="button" id="mobileWithdrawBtn" class="btn-mobile-withdraw" style="display:none;" onclick="handleMobileCancelBuzz()">
+      ↩ 間違えたので回答を取り下げる（減点なし）
+    </button>
+
+    <button type="button" class="btn-nav" style="justify-content:center;padding:12px;" onclick="leaveMobileTeam()">
+      ↩ チームを変更する
+    </button>
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+   1. ISO/IEC 18004 QR CODE SVG GENERATOR (Byte Mode, ECC-L, Mask 0 = 0x77c4)
+   ============================================================================ */
+const IsoQrGenerator = (() => {
+  const GF_EXP = new Uint8Array(512);
+  const GF_LOG = new Uint8Array(256);
+  let x = 1;
+  for (let i = 0; i < 255; i++) {
+    GF_EXP[i] = x;
+    GF_LOG[x] = i;
+    x <<= 1;
+    if (x & 0x100) x ^= 0x11d;
+  }
+  for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
+
+  function gfMul(a, b) {
+    if (a === 0 || b === 0) return 0;
+    return GF_EXP[GF_LOG[a] + GF_LOG[b]];
+  }
+
+  function rsGeneratorPoly(ecLen) {
+    let poly = [1];
+    for (let i = 0; i < ecLen; i++) {
+      const next = new Array(poly.length + 1).fill(0);
+      for (let j = 0; j < poly.length; j++) {
+        next[j] ^= poly[j];
+        next[j + 1] ^= gfMul(poly[j], GF_EXP[i]);
+      }
+      poly = next;
+    }
+    return poly;
+  }
+
+  function rsComputeRemainder(data, ecLen) {
+    const gen = rsGeneratorPoly(ecLen);
+    const res = new Uint8Array(ecLen);
+    for (let i = 0; i < data.length; i++) {
+      const factor = data[i] ^ res[0];
+      for (let j = 0; j < ecLen - 1; j++) res[j] = res[j + 1];
+      res[ecLen - 1] = 0;
+      for (let j = 0; j < ecLen; j++) res[j] ^= gfMul(gen[j + 1], factor);
+    }
+    return res;
+  }
+
+  const VERSIONS = [
+    null,
+    { size: 21, total: 26, ec: 7, blocks: [[1, 19]], align: [] },
+    { size: 25, total: 44, ec: 10, blocks: [[1, 34]], align: [6, 18] },
+    { size: 29, total: 70, ec: 15, blocks: [[1, 55]], align: [6, 22] },
+    { size: 33, total: 100, ec: 20, blocks: [[1, 80]], align: [6, 26] },
+    { size: 37, total: 134, ec: 26, blocks: [[1, 108]], align: [6, 30] },
+    { size: 41, total: 172, ec: 18, blocks: [[2, 68]], align: [6, 34] },
+    { size: 45, total: 196, ec: 20, blocks: [[2, 78]], align: [6, 22, 38] },
+    { size: 49, total: 242, ec: 24, blocks: [[2, 97]], align: [6, 24, 42] },
+    { size: 53, total: 292, ec: 30, blocks: [[2, 116]], align: [6, 26, 46] },
+    { size: 57, total: 346, ec: 18, blocks: [[2, 68], [2, 69]], align: [6, 28, 50] },
+    { size: 61, total: 404, ec: 20, blocks: [[4, 81]], align: [6, 30, 54] },
+    { size: 65, total: 466, ec: 24, blocks: [[2, 92], [2, 93]], align: [6, 32, 58] },
+    { size: 69, total: 532, ec: 26, blocks: [[4, 107]], align: [6, 34, 62] },
+    { size: 73, total: 581, ec: 30, blocks: [[3, 115], [1, 116]], align: [6, 26, 46, 66] }
+  ];
+
+  function encodeBytes(text) {
+    const bytes = new TextEncoder().encode(text);
+    let ver = 1;
+    for (; ver < VERSIONS.length; ver++) {
+      const cap = VERSIONS[ver].blocks.reduce((sum, [cnt, d]) => sum + cnt * d, 0);
+      const headerBytes = ver <= 9 ? 2 : 3;
+      if (bytes.length + headerBytes <= cap) break;
+    }
+    if (ver >= VERSIONS.length) throw new Error("URL too long");
+    const spec = VERSIONS[ver];
+    const cap = spec.blocks.reduce((sum, [cnt, d]) => sum + cnt * d, 0);
+
+    const bits = [];
+    const pushBits = (val, len) => {
+      for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1);
+    };
+    pushBits(0b0100, 4);
+    pushBits(bytes.length, ver <= 9 ? 8 : 16);
+    for (const b of bytes) pushBits(b, 8);
+    const maxBits = cap * 8;
+    pushBits(0, Math.min(4, maxBits - bits.length));
+    while (bits.length % 8 !== 0) bits.push(0);
+
+    const codewords = [];
+    for (let i = 0; i < bits.length; i += 8) {
+      let cw = 0;
+      for (let j = 0; j < 8; j++) cw = (cw << 1) | bits[i + j];
+      codewords.push(cw);
+    }
+    const pads = [0xec, 0x11];
+    let pIdx = 0;
+    while (codewords.length < cap) {
+      codewords.push(pads[pIdx % 2]);
+      pIdx++;
+    }
+
+    const dataBlocks = [];
+    const ecBlocks = [];
+    let offset = 0;
+    for (const [count, dataLen] of spec.blocks) {
+      for (let b = 0; b < count; b++) {
+        const slice = codewords.slice(offset, offset + dataLen);
+        offset += dataLen;
+        dataBlocks.push(slice);
+        ecBlocks.push(rsComputeRemainder(slice, spec.ec));
+      }
+    }
+
+    const finalBytes = [];
+    const maxDataLen = Math.max(...dataBlocks.map(b => b.length));
+    for (let i = 0; i < maxDataLen; i++) {
+      for (const b of dataBlocks) if (i < b.length) finalBytes.push(b[i]);
+    }
+    for (let i = 0; i < spec.ec; i++) {
+      for (const b of ecBlocks) finalBytes.push(b[i]);
+    }
+    return { ver, spec, finalBytes };
+  }
+
+  function buildMatrix(text) {
+    const { ver, spec, finalBytes } = encodeBytes(text);
+    const N = spec.size;
+    const grid = Array.from({ length: N }, () => new Int8Array(N));
+    const isFunc = Array.from({ length: N }, () => new Uint8Array(N));
+
+    const setFunc = (r, c, val) => {
+      if (r >= 0 && r < N && c >= 0 && c < N) {
+        grid[r][c] = val ? 1 : 0;
+        isFunc[r][c] = 1;
+      }
+    };
+
+    const drawFinder = (r0, c0) => {
+      for (let dr = -1; dr <= 7; dr++) {
+        for (let dc = -1; dc <= 7; dc++) {
+          const inOuter = dr >= 0 && dr <= 6 && dc >= 0 && dc <= 6;
+          const inInner = dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4;
+          const onEdge = dr === 0 || dr === 6 || dc === 0 || dc === 6;
+          setFunc(r0 + dr, c0 + dc, inOuter && (onEdge || inInner) ? 1 : 0);
+        }
+      }
+    };
+    drawFinder(0, 0);
+    drawFinder(0, N - 7);
+    drawFinder(N - 7, 0);
+
+    for (let i = 8; i < N - 8; i++) {
+      setFunc(6, i, i % 2 === 0 ? 1 : 0);
+      setFunc(i, 6, i % 2 === 0 ? 1 : 0);
+    }
+
+    const pos = spec.align;
+    for (let i = 0; i < pos.length; i++) {
+      for (let j = 0; j < pos.length; j++) {
+        if ((i === 0 && j === 0) || (i === 0 && j === pos.length - 1) || (i === pos.length - 1 && j === 0)) continue;
+        const cr = pos[i], cc = pos[j];
+        for (let dr = -2; dr <= 2; dr++) {
+          for (let dc = -2; dc <= 2; dc++) {
+            const dark = Math.max(Math.abs(dr), Math.abs(dc)) !== 1;
+            setFunc(cr + dr, cc + dc, dark ? 1 : 0);
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < 9; i++) {
+      if (i !== 6) {
+        setFunc(8, i, 0);
+        setFunc(i, 8, 0);
+      }
+    }
+    for (let i = 0; i < 8; i++) {
+      setFunc(8, N - 1 - i, 0);
+      setFunc(N - 1 - i, 8, 0);
+    }
+    setFunc(N - 8, 8, 1);
+
+    if (ver >= 7) {
+      let rem = ver;
+      for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25);
+      const vBits = (ver << 12) | rem;
+      for (let i = 0; i < 18; i++) {
+        const bit = (vBits >>> i) & 1;
+        const a = N - 11 + (i % 3);
+        const b = Math.floor(i / 3);
+        setFunc(a, b, bit);
+        setFunc(b, a, bit);
+      }
+    }
+
+    const dataBits = [];
+    for (const byte of finalBytes) {
+      for (let b = 7; b >= 0; b--) dataBits.push((byte >>> b) & 1);
+    }
+    let bitIdx = 0;
+    let upward = true;
+    for (let right = N - 1; right >= 1; right -= 2) {
+      if (right === 6) right = 5;
+      for (let step = 0; step < N; step++) {
+        const r = upward ? N - 1 - step : step;
+        for (let dx = 0; dx < 2; dx++) {
+          const c = right - dx;
+          if (!isFunc[r][c]) {
+            const rawBit = bitIdx < dataBits.length ? dataBits[bitIdx++] : 0;
+            const maskBit = ((r + c) % 2 === 0) ? 1 : 0;
+            grid[r][c] = rawBit ^ maskBit;
+          }
+        }
+      }
+      upward = !upward;
+    }
+
+    // ECC-L (01) + Mask 0 (000) -> BCH + XOR 0x5412 = 0x77c4 (MSB-first)
+    const fmtBits = 0x77c4;
+    for (let i = 0; i <= 5; i++) setFunc(8, i, (fmtBits >>> (14 - i)) & 1);
+    setFunc(8, 7, (fmtBits >>> 8) & 1);
+    setFunc(8, 8, (fmtBits >>> 7) & 1);
+    setFunc(7, 8, (fmtBits >>> 6) & 1);
+    for (let i = 0; i <= 5; i++) setFunc(5 - i, 8, (fmtBits >>> (5 - i)) & 1);
+
+    for (let i = 0; i <= 6; i++) setFunc(N - 1 - i, 8, (fmtBits >>> (14 - i)) & 1);
+    for (let i = 0; i <= 7; i++) setFunc(8, N - 8 + i, (fmtBits >>> (7 - i)) & 1);
+    setFunc(N - 8, 8, 1);
+
+    return grid;
+  }
+
+  function renderSvg(text, quietZone = 4) {
+    const grid = buildMatrix(text);
+    const N = grid.length;
+    const total = N + quietZone * 2;
+    let paths = "";
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        if (grid[r][c]) {
+          paths += `M${c + quietZone},${r + quietZone}h1v1h-1z`;
+        }
+      }
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${total}" shape-rendering="crispEdges">
+      <rect width="${total}" height="${total}" fill="#ffffff"/>
+      <path d="${paths}" fill="#000000"/>
+    </svg>`;
+  }
+
+  return { renderSvg };
+})();
+
+/* ============================================================================
+   2. DEFAULT STATE & DEMO TRACKS
+   ============================================================================ */
+const DEFAULT_TEAMS = [
+  { id: "t1", name: "Aチーム（紅組）", color: "#ef4444", score: 0 },
+  { id: "t2", name: "Bチーム（青組）", color: "#3b82f6", score: 0 },
+  { id: "t3", name: "Cチーム（緑組）", color: "#10b981", score: 0 },
+  { id: "t4", name: "Dチーム（黄組）", color: "#f59e0b", score: 0 }
+];
+
+const DEFAULT_TRACKS = [
+  { id: "s1", isPractice: false, points: 10, title: "アイドル", artist: "YOASOBI", introSec: 0, chorusSec: 12, audioUrl: null, audioBlob: null, audioName: "内蔵シンセデモ音源 #1", coverUrl: null },
+  { id: "s2", isPractice: false, points: 10, title: "Bling-Bang-Bang-Born", artist: "Creepy Nuts", introSec: 0, chorusSec: 14, audioUrl: null, audioBlob: null, audioName: "内蔵シンセデモ音源 #2", coverUrl: null },
+  { id: "s3", isPractice: false, points: 10, title: "マリーゴールド", artist: "あいみょん", introSec: 0, chorusSec: 15, audioUrl: null, audioBlob: null, audioName: "内蔵シンセデモ音源 #3", coverUrl: null },
+  { id: "s4", isPractice: false, points: 10, title: "Pretender", artist: "Official髭男dism", introSec: 0, chorusSec: 16, audioUrl: null, audioBlob: null, audioName: "内蔵シンセデモ音源 #4", coverUrl: null },
+  { id: "s5", isPractice: false, points: 20, title: "残酷な天使のテーゼ", artist: "高橋洋子", introSec: 0, chorusSec: 15, audioUrl: null, audioBlob: null, audioName: "内蔵シンセデモ音源 #5", coverUrl: null }
+];
+
+const state = {
+  roomId: String(Math.floor(1000 + Math.random() * 9000)),
+  teams: JSON.parse(JSON.stringify(DEFAULT_TEAMS)),
+  tracks: JSON.parse(JSON.stringify(DEFAULT_TRACKS)),
+  currentTrackIndex: 0,
+  gameState: "idle",
+  buzzerOpen: false,
+  lockedTeams: [],
+  buzzedTeamId: null,
+  buzzQueue: [],
+  questionStartPerf: 0,
+  hasStartedCurrentQuestion: false,
+  answerTimerId: null,
+  answerSecondsLeft: 10,
+  splitBuzzerOn: false,
+  pointsPerCorrect: 10,
+  penaltyPerWrong: 0
+};
+
+/* ============================================================================
+   3. WEB AUDIO API SYNTHESIZER & HTML5 AUDIO PLAYER
+   ============================================================================ */
+const AudioEngine = (() => {
+  let audioCtx = null;
+  const audioEl = new Audio();
+  audioEl.crossOrigin = "anonymous";
+  let currentVolume = 0.85;
+  audioEl.volume = currentVolume;
+
+  let synthTimer = null;
+  let synthTime = 0;
+  const synthDuration = 24;
+  let isPlaying = false;
+  let usingSynth = true;
+  let onEndedCallback = null;
+
+  const DEMO_MELODIES = [
+    [523.25, 659.25, 783.99, 1046.50, 987.77, 783.99, 659.25, 587.33, 659.25, 783.99, 880.00, 1046.50],
+    [329.63, 329.63, 392.00, 440.00, 329.63, 493.88, 440.00, 392.00, 329.63, 293.66, 329.63, 392.00],
+    [392.00, 440.00, 493.88, 587.33, 523.25, 493.88, 440.00, 392.00, 440.00, 493.88, 523.25, 587.33],
+    [440.00, 554.37, 659.25, 880.00, 830.61, 659.25, 554.37, 493.88, 554.37, 659.25, 739.99, 880.00],
+    [523.25, 622.25, 698.46, 622.25, 698.46, 698.46, 698.46, 932.33, 830.61, 783.99, 698.46, 783.99]
+  ];
+
+  function ensureCtx() {
+    try {
+      if (!audioCtx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx) audioCtx = new Ctx();
+      }
+      if (audioCtx && audioCtx.state === "suspended") {
+        audioCtx.resume().catch(() => {});
+      }
+    } catch (e) {}
+    return audioCtx;
+  }
+
+  function playSynthNote(freq) {
+    try {
+      const ctx = ensureCtx();
+      if (!ctx) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      gain.gain.setValueAtTime(currentVolume * 0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.29);
+    } catch (e) {}
+  }
+
+  function start(track, trackIdx, seekToSec = null) {
+    pause();
+    isPlaying = true;
+    if (track && track.audioUrl) {
+      usingSynth = false;
+      if (audioEl.src !== track.audioUrl) {
+        audioEl.src = track.audioUrl;
+      }
+      if (seekToSec !== null) {
+        try { audioEl.currentTime = seekToSec; } catch (e) {}
+      }
+      audioEl.play().catch(() => {
+        isPlaying = false;
+        renderAllHostUI();
+      });
+    } else {
+      usingSynth = true;
+      if (seekToSec !== null) synthTime = seekToSec;
+      const notes = DEMO_MELODIES[trackIdx % DEMO_MELODIES.length];
+      let step = Math.floor(synthTime / 0.3);
+      playSynthNote(notes[step % notes.length]);
+      synthTimer = setInterval(() => {
+        if (!isPlaying) return;
+        synthTime += 0.3;
+        step++;
+        if (synthTime >= synthDuration) {
+          synthTime = 0;
+          stop(true, 0);
+          if (onEndedCallback) onEndedCallback();
+          return;
+        }
+        playSynthNote(notes[step % notes.length]);
+        updatePlaybackUI();
+      }, 300);
+    }
+  }
+
+  function pause() {
+    isPlaying = false;
+    if (!usingSynth) {
+      try { audioEl.pause(); } catch (e) {}
+    } else if (synthTimer) {
+      clearInterval(synthTimer);
+      synthTimer = null;
+    }
+  }
+
+  function stop(resetPos = true, resetSec = 0) {
+    pause();
+    if (resetPos) {
+      synthTime = resetSec;
+      try {
+        if (audioEl.src) audioEl.currentTime = resetSec;
+      } catch (e) {}
+    }
+  }
+
+  function setPosition(track, sec) {
+    const target = Math.max(0, Number(sec) || 0);
+    if (track && track.audioUrl) {
+      usingSynth = false;
+      if (audioEl.src !== track.audioUrl) {
+        audioEl.src = track.audioUrl;
+      }
+      const applySeek = () => {
+        try {
+          const maxDur = isFinite(audioEl.duration) && audioEl.duration > 0 ? audioEl.duration : target;
+          audioEl.currentTime = Math.min(target, maxDur);
+        } catch (e) {}
+        updatePlaybackUI();
+      };
+      if (audioEl.readyState >= 1) {
+        applySeek();
+      } else {
+        audioEl.addEventListener("loadedmetadata", applySeek, { once: true });
+      }
+    } else {
+      usingSynth = true;
+      synthTime = Math.min(target, synthDuration);
+      updatePlaybackUI();
+    }
+  }
+
+  function seek(track, sec) {
+    if (track && track.audioUrl && !usingSynth) {
+      try { audioEl.currentTime = sec; } catch (e) {}
+    } else {
+      synthTime = sec;
+    }
+    updatePlaybackUI();
+  }
+
+  function setVolume(vol) {
+    currentVolume = parseFloat(vol);
+    audioEl.volume = currentVolume;
+  }
+
+  function getCurrentTime() {
+    return usingSynth ? synthTime : (audioEl.currentTime || 0);
+  }
+
+  function getDuration(track) {
+    if (track && track.audioUrl && !usingSynth && isFinite(audioEl.duration) && audioEl.duration > 0) {
+      return audioEl.duration;
+    }
+    return synthDuration;
+  }
+
+  function getIsPlaying() {
+    return isPlaying;
+  }
+
+  audioEl.addEventListener("timeupdate", () => {
+    if (!usingSynth) updatePlaybackUI();
+  });
+  audioEl.addEventListener("loadedmetadata", () => {
+    const track = currentTrack();
+    if (!isPlaying && !state.hasStartedCurrentQuestion && track) {
+      const introStart = Math.max(0, Number(track.introSec) || 0);
+      if (introStart > 0 && Math.abs(audioEl.currentTime - introStart) > 0.2) {
+        try {
+          audioEl.currentTime = Math.min(introStart, audioEl.duration || introStart);
+        } catch (e) {}
+      }
+    }
+    updatePlaybackUI();
+  });
+  audioEl.addEventListener("ended", () => {
+    isPlaying = false;
+    if (onEndedCallback) onEndedCallback();
+  });
+
+  function playSfxBuzz() {
+    try {
+      const ctx = ensureCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      [880, 1174.66].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "square";
+        osc.frequency.setValueAtTime(freq, now + i * 0.07);
+        gain.gain.setValueAtTime(0.22, now + i * 0.07);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.28);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.07);
+        osc.stop(now + i * 0.07 + 0.28);
+      });
+    } catch (e) {}
+  }
+
+  function playSfxCorrect() {
+    try {
+      const ctx = ensureCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      [659.25, 523.25, 659.25, 1046.50].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, now + i * 0.11);
+        gain.gain.setValueAtTime(0.28, now + i * 0.11);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.11 + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.11);
+        osc.stop(now + i * 0.11 + 0.35);
+      });
+    } catch (e) {}
+  }
+
+  function playSfxWrong() {
+    try {
+      const ctx = ensureCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      [150, 110].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(freq, now + i * 0.18);
+        gain.gain.setValueAtTime(0.25, now + i * 0.18);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.18 + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.18);
+        osc.stop(now + i * 0.18 + 0.35);
+      });
+    } catch (e) {}
+  }
+
+  return {
+    start, pause, stop, setPosition, seek, setVolume, getCurrentTime, getDuration, getIsPlaying,
+    playSfxBuzz, playSfxCorrect, playSfxWrong,
+    setOnEnded: (fn) => { onEndedCallback = fn; }
+  };
+})();
+
+/* ============================================================================
+   4. FAULT-TOLERANT SYNCBUS (WSS MQTT + PEERJS + BROADCASTCHANNEL)
+   ============================================================================ */
+let hostPeer = null;
+let hostMqttClient = null;
+let hostMqttConnected = false;
+let hostBroadcastChannel = null;
+const connectedPeers = new Map();
+const localTabClients = new Map();
+const mqttClients = new Map();
+const processedActionIds = new Set();
+
+const MQTT_BROKERS = [
+  "wss://broker.emqx.io:8084/mqtt",
+  "wss://broker.hivemq.com:8884/mqtt"
+];
+
+function getMqttTopics(roomId) {
+  return {
+    stateTopic: `bounenkai-intro-quiz/${roomId}/state`,
+    actionTopic: `bounenkai-intro-quiz/${roomId}/action`
+  };
+}
+
+function recordProcessedAction(actionId) {
+  if (!actionId) return true;
+  if (processedActionIds.has(actionId)) return false;
+  processedActionIds.add(actionId);
+  if (processedActionIds.size > 400) {
+    const first = processedActionIds.values().next().value;
+    processedActionIds.delete(first);
+  }
+  return true;
+}
+
+function handleIncomingPlayerAction(msg) {
+  if (!msg || typeof msg !== "object") return;
+  if (msg.actionId && !recordProcessedAction(msg.actionId)) return;
+
+  if (msg.clientId) {
+    const prev = mqttClients.get(msg.clientId);
+    mqttClients.set(msg.clientId, {
+      teamId: msg.teamId !== undefined ? msg.teamId : (prev ? prev.teamId : null),
+      lastSeen: Date.now()
+    });
+    updateConnectedDeviceCounts();
+  }
+
+  if (msg.type === "JOIN_TEAM") {
+    broadcastHostState();
+  } else if (msg.type === "BUZZ") {
+    handleIncomingBuzz(msg.teamId);
+  } else if (msg.type === "CANCEL_BUZZ") {
+    if (state.gameState === "buzzed" && state.buzzedTeamId === msg.teamId) {
+      cancelBuzz();
+    }
+  } else if (msg.type === "REQUEST_SYNC" || msg.type === "PING") {
+    broadcastHostState();
+  } else if (msg.type === "LEAVE_CLIENT" && msg.clientId) {
+    mqttClients.delete(msg.clientId);
+    updateConnectedDeviceCounts();
+  }
+}
+
+function setupHostMqtt(brokerIdx = 0) {
+  if (hostMqttClient) {
+    try { hostMqttClient.end(true); } catch (e) {}
+    hostMqttClient = null;
+  }
+  hostMqttConnected = false;
+
+  if (typeof mqtt === "undefined") return;
+  const brokerUrl = MQTT_BROKERS[brokerIdx % MQTT_BROKERS.length];
+  const { actionTopic } = getMqttTopics(state.roomId);
+
+  try {
+    const client = mqtt.connect(brokerUrl, {
+      clientId: `host_${state.roomId}_${Math.random().toString(36).slice(2, 8)}`,
+      clean: true,
+      connectTimeout: 5000,
+      reconnectPeriod: 2000
+    });
+    hostMqttClient = client;
+
+    const fallbackTimer = setTimeout(() => {
+      if (!hostMqttConnected && hostMqttClient === client) {
+        setupHostMqtt(brokerIdx + 1);
+      }
+    }, 5500);
+
+    client.on("connect", () => {
+      clearTimeout(fallbackTimer);
+      hostMqttConnected = true;
+      try { client.subscribe(actionTopic, { qos: 0 }); } catch (e) {}
+      updateHostConnectionBadge();
+      broadcastHostState();
+      setTimeout(() => broadcastHostState(), 250);
+    });
+
+    client.on("message", (topic, payloadBuf) => {
+      if (topic !== actionTopic) return;
+      try {
+        const msg = JSON.parse(payloadBuf.toString());
+        handleIncomingPlayerAction(msg);
+      } catch (e) {}
+    });
+
+    client.on("close", () => {
+      hostMqttConnected = false;
+      updateHostConnectionBadge();
+    });
+
+    client.on("error", () => {
+      hostMqttConnected = false;
+    });
+  } catch (e) {}
+}
+
+function updateHostConnectionBadge() {
+  const badge = document.getElementById("hostConnBadge");
+  if (!badge) return;
+  const href = window.location.href;
+  const isHttp = href.startsWith("http://") || href.startsWith("https://");
+  const isReady = hostMqttConnected || (hostPeer && hostPeer.open);
+
+  if (isReady) {
+    badge.className = "conn-dot-badge";
+    badge.textContent = isHttp ? "● オンライン受付OK" : "● 受付待機中（公開URLでスマホ接続可）";
+  } else {
+    badge.className = "conn-dot-badge warn";
+    badge.textContent = isHttp ? "● 接続準備中..." : "● スタンドアロンモード";
+  }
+}
+
+function setupHostBroadcastChannel() {
+  if (hostBroadcastChannel) {
+    try { hostBroadcastChannel.close(); } catch (e) {}
+    hostBroadcastChannel = null;
+  }
+  if (typeof BroadcastChannel === "undefined") return;
+  try {
+    hostBroadcastChannel = new BroadcastChannel(`bounenkai-intro-${state.roomId}`);
+    hostBroadcastChannel.onmessage = (ev) => {
+      const msg = ev.data;
+      if (!msg || typeof msg !== "object") return;
+      if (msg.type === "JOIN_TEAM") {
+        if (msg.clientId) {
+          localTabClients.set(msg.clientId, { teamId: msg.teamId || null, lastSeen: Date.now() });
+          updateConnectedDeviceCounts();
+        }
+        broadcastHostState();
+      } else if (msg.type === "BUZZ") {
+        handleIncomingBuzz(msg.teamId);
+      } else if (msg.type === "CANCEL_BUZZ") {
+        if (state.gameState === "buzzed" && state.buzzedTeamId === msg.teamId) {
+          cancelBuzz();
+        }
+      } else if (msg.type === "REQUEST_SYNC" || msg.type === "PING") {
+        if (msg.clientId) {
+          const prev = localTabClients.get(msg.clientId);
+          localTabClients.set(msg.clientId, {
+            teamId: msg.teamId !== undefined ? msg.teamId : (prev ? prev.teamId : null),
+            lastSeen: Date.now()
+          });
+          updateConnectedDeviceCounts();
+        }
+        broadcastHostState();
+      } else if (msg.type === "LEAVE_CLIENT" && msg.clientId) {
+        localTabClients.delete(msg.clientId);
+        updateConnectedDeviceCounts();
+      }
+    };
+  } catch (e) {}
+}
+
+function initHostPeer() {
+  if (hostPeer) {
+    try { hostPeer.destroy(); } catch (e) {}
+  }
+  connectedPeers.clear();
+  localTabClients.clear();
+  mqttClients.clear();
+  setupHostBroadcastChannel();
+  setupHostMqtt(0);
+  updateConnectedDeviceCounts();
+
+  document.getElementById("hostRoomIdDisplay").textContent = state.roomId;
+  document.getElementById("modalRoomId").textContent = state.roomId;
+  refreshQrCode();
+  updateHostConnectionBadge();
+
+  const peerId = `bounenkai-intro-${state.roomId}`;
+
+  try {
+    if (typeof Peer === "undefined") return;
+
+    hostPeer = new Peer(peerId, {
+      debug: 0,
+      config: {
+        iceServers: [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
+          { urls: "stun:stun2.l.google.com:19302" },
+          { urls: "stun:stun.cloudflare.com:3478" }
+        ]
+      }
+    });
+
+    const openWatchdog = setTimeout(() => {
+      if (hostPeer && !hostPeer.open && !hostPeer.destroyed) {
+        try { hostPeer.reconnect(); } catch (e) {}
+      }
+    }, 5000);
+
+    hostPeer.on("open", () => {
+      clearTimeout(openWatchdog);
+      updateHostConnectionBadge();
+      document.getElementById("hostRoomIdDisplay").textContent = state.roomId;
+      document.getElementById("modalRoomId").textContent = state.roomId;
+      refreshQrCode();
+      broadcastHostState();
+    });
+
+    hostPeer.on("disconnected", () => {
+      updateHostConnectionBadge();
+      try { hostPeer.reconnect(); } catch (e) {}
+    });
+
+    hostPeer.on("connection", (conn) => {
+      const clientId = conn.metadata && conn.metadata.clientId;
+      if (clientId) {
+        for (const [oldPeerId, entry] of connectedPeers.entries()) {
+          if (entry.clientId === clientId && oldPeerId !== conn.peer) {
+            try { entry.conn.close(); } catch (e) {}
+            connectedPeers.delete(oldPeerId);
+          }
+        }
+      }
+
+      connectedPeers.set(conn.peer, { conn, teamId: null, clientId: clientId || conn.peer, lastSeen: Date.now() });
+      updateConnectedDeviceCounts();
+
+      conn.on("data", (rawMsg) => {
+        let msg = rawMsg;
+        if (typeof rawMsg === "string") {
+          try { msg = JSON.parse(rawMsg); } catch (e) { return; }
+        }
+        if (!msg || typeof msg !== "object") return;
+        const entry = connectedPeers.get(conn.peer);
+        if (entry) entry.lastSeen = Date.now();
+
+        if (msg.type === "JOIN_TEAM") {
+          if (entry) entry.teamId = msg.teamId;
+          updateConnectedDeviceCounts();
+          sendStateToConn(conn);
+        } else if (msg.type === "BUZZ") {
+          handleIncomingBuzz(msg.teamId);
+        } else if (msg.type === "CANCEL_BUZZ") {
+          if (state.gameState === "buzzed" && state.buzzedTeamId === msg.teamId) {
+            cancelBuzz();
+          }
+        } else if (msg.type === "REQUEST_SYNC") {
+          if (entry && msg.teamId !== undefined) entry.teamId = msg.teamId;
+          updateConnectedDeviceCounts();
+          sendStateToConn(conn);
+        } else if (msg.type === "PING") {
+          sendRawToConn(conn, { type: "PONG" });
+          sendStateToConn(conn);
+        }
+      });
+
+      conn.on("open", () => {
+        sendStateToConn(conn);
+        setTimeout(() => sendStateToConn(conn), 200);
+        setTimeout(() => sendStateToConn(conn), 600);
+      });
+
+      conn.on("close", () => {
+        connectedPeers.delete(conn.peer);
+        updateConnectedDeviceCounts();
+      });
+
+      conn.on("error", () => {
+        connectedPeers.delete(conn.peer);
+        updateConnectedDeviceCounts();
+      });
+    });
+
+    hostPeer.on("error", (err) => {
+      clearTimeout(openWatchdog);
+      if (err && err.type === "unavailable-id") {
+        state.roomId = String(Math.floor(1000 + Math.random() * 9000));
+        initHostPeer();
+      } else {
+        updateHostConnectionBadge();
+      }
+    });
+  } catch (e) {
+    hostPeer = null;
+    updateHostConnectionBadge();
+  }
+}
+
+function regenerateRoomId() {
+  state.roomId = String(Math.floor(1000 + Math.random() * 9000));
+  initHostPeer();
+  showToast(`新しいROOM ID（${state.roomId}）を発行しました！`);
+}
+
+function getUniqueConnectedClientMap() {
+  const unique = new Map();
+  const now = Date.now();
+  for (const [cid, item] of localTabClients.entries()) {
+    if (now - item.lastSeen > 12000) {
+      localTabClients.delete(cid);
+    } else {
+      unique.set(cid, item.teamId || null);
+    }
+  }
+  for (const [cid, item] of mqttClients.entries()) {
+    if (now - item.lastSeen > 12000) {
+      mqttClients.delete(cid);
+    } else if (!unique.has(cid) || item.teamId) {
+      unique.set(cid, item.teamId || null);
+    }
+  }
+  for (const [peerId, entry] of connectedPeers.entries()) {
+    const cid = entry.clientId || peerId;
+    if (!unique.has(cid) || entry.teamId) {
+      unique.set(cid, entry.teamId || null);
+    }
+  }
+  return unique;
+}
+
+function updateConnectedDeviceCounts() {
+  const unique = getUniqueConnectedClientMap();
+  const badge = document.getElementById("totalDevicesBadge");
+  if (badge) {
+    badge.textContent = `${unique.size}台`;
+  }
+  renderScoreboard();
+}
+
+function buildHostStatePayload() {
+  return {
+    type: "HOST_STATE",
+    ts: Date.now(),
+    teams: state.teams.map(t => ({ id: t.id, name: t.name, color: t.color, score: t.score })),
+    lockedTeams: [...state.lockedTeams],
+    buzzedTeamId: state.buzzedTeamId,
+    gameState: state.gameState,
+    buzzerOpen: Boolean(state.buzzerOpen)
+  };
+}
+
+function sendRawToConn(conn, obj) {
+  if (!conn) return;
+  try {
+    if (conn.open) {
+      conn.send(obj);
+    } else if (conn.dataChannel && conn.dataChannel.readyState === "open") {
+      conn.dataChannel.send(JSON.stringify(obj));
+    }
+  } catch (e) {}
+}
+
+function sendStateToConn(conn) {
+  if (!conn) return;
+  sendRawToConn(conn, buildHostStatePayload());
+}
+
+function broadcastHostState() {
+  const payload = buildHostStatePayload();
+  if (hostMqttClient && hostMqttConnected) {
+    try {
+      const { stateTopic } = getMqttTopics(state.roomId);
+      hostMqttClient.publish(stateTopic, JSON.stringify(payload), { qos: 0, retain: true });
+    } catch (e) {}
+  }
+  if (hostBroadcastChannel) {
+    try { hostBroadcastChannel.postMessage(payload); } catch (e) {}
+  }
+  for (const [peerId, entry] of connectedPeers.entries()) {
+    if (!entry || !entry.conn) {
+      connectedPeers.delete(peerId);
+      continue;
+    }
+    const pc = entry.conn.peerConnection;
+    const iceState = pc ? pc.iceConnectionState : null;
+    if (iceState === "closed" || iceState === "failed") {
+      connectedPeers.delete(peerId);
+    } else {
+      sendRawToConn(entry.conn, payload);
+    }
+  }
+  updateConnectedDeviceCounts();
+}
+
+setInterval(() => {
+  if (hostMqttConnected || connectedPeers.size > 0 || localTabClients.size > 0 || mqttClients.size > 0) {
+    broadcastHostState();
+  }
+}, 1200);
+
+/* ============================================================================
+   5. QR CODE URL (SHORT ?room=XXXX FOR CHROMEBOOK) & MODAL MANAGEMENT
+   ============================================================================ */
+function getEffectiveBaseUrl() {
+  const inputEl = document.getElementById("baseUrlInput");
+  const inputVal = inputEl ? inputEl.value.trim() : "";
+  if (inputVal) return inputVal.split("?")[0];
+  return window.location.href.split("?")[0];
+}
+
+function getFullShareUrl() {
+  const base = getEffectiveBaseUrl();
+  const sep = base.includes("?") ? "&" : "?";
+  return `${base}${sep}room=${state.roomId}`;
+}
+
+function refreshQrCode() {
+  const fullUrl = getFullShareUrl();
+  const container = document.getElementById("qrSvgContainer");
+  const testLink = document.getElementById("testPhoneLink");
+  if (!container) return;
+
+  if (testLink) testLink.href = fullUrl;
+  const isLocal = fullUrl.startsWith("file://") || fullUrl.startsWith("blob:") || fullUrl.startsWith("about:") || fullUrl.includes("googleusercontent.com") || fullUrl.includes("scf.usercontent.goog");
+  const warnEl = document.getElementById("localFileWarning");
+  if (warnEl) warnEl.style.display = isLocal ? "block" : "none";
+
+  try {
+    container.innerHTML = IsoQrGenerator.renderSvg(fullUrl, 4);
+  } catch (e) {
+    container.innerHTML = `<div style="color:#000;padding:20px;font-size:12px;">URLが長すぎます</div>`;
+  }
+}
+
+function openQrModal() {
+  const baseInput = document.getElementById("baseUrlInput");
+  if (baseInput && !baseInput.value) baseInput.value = window.location.href.split("?")[0];
+  refreshQrCode();
+  document.getElementById("qrModal").style.display = "flex";
+}
+
+function closeQrModal() {
+  document.getElementById("qrModal").style.display = "none";
+}
+
+function copyShareUrl() {
+  const url = getFullShareUrl();
+  const temp = document.createElement("input");
+  temp.value = url;
+  document.body.appendChild(temp);
+  temp.select();
+  document.execCommand("copy");
+  document.body.removeChild(temp);
+  showToast("参加用URLをコピーしました！");
+}
+
+/* ============================================================================
+   6. HOST QUIZ GAMEPLAY LOGIC
+   ============================================================================ */
+function currentTrack() {
+  return state.tracks[state.currentTrackIndex] || state.tracks[0];
+}
+
+function getTrackPoints(track) {
+  if (!track) return state.pointsPerCorrect;
+  if (track.isPractice) return 0;
+  const p = Number(track.points);
+  return (!isNaN(p) && p > 0) ? p : state.pointsPerCorrect;
+}
+
+function getTrackLabel(idx) {
+  const track = state.tracks[idx];
+  const mainTracks = state.tracks.filter(t => !t.isPractice);
+  const totalMain = mainTracks.length;
+  if (track && track.isPractice) {
+    return `🎤 練習問題（全${totalMain}問）`;
+  }
+  let mainNum = 0;
+  for (let i = 0; i <= idx; i++) {
+    if (!state.tracks[i].isPractice) mainNum++;
+  }
+  return `第${mainNum}問 / 全${totalMain}問`;
+}
+
+function toggleBuzzerOpen() {
+  if (state.gameState === "buzzed") {
+    showToast("現在は解答判定中です");
+    return;
+  }
+  state.buzzerOpen = !state.buzzerOpen;
+  if (state.buzzerOpen) {
+    if (!state.questionStartPerf) state.questionStartPerf = performance.now();
+    showToast("🔓 全端末の早押しロックを解除しました！");
+  } else {
+    showToast("🔒 早押しをロックしました");
+  }
+  renderAllHostUI();
+  broadcastHostState();
+  setTimeout(() => broadcastHostState(), 250);
+  setTimeout(() => broadcastHostState(), 600);
+}
+
+function togglePlayPause() {
+  const track = currentTrack();
+  if (AudioEngine.getIsPlaying()) {
+    AudioEngine.pause();
+    if (state.gameState === "playing") state.gameState = "idle";
+  } else {
+    if (state.gameState === "buzzed") return;
+    if (!state.buzzerOpen && state.gameState !== "revealed") {
+      state.buzzerOpen = true;
+      showToast("🔓 解答ロックを自動解除してイントロを再生します！");
+    }
+    document.getElementById("resumeBanner").style.display = "none";
+    const introStart = Math.max(0, Number(track.introSec) || 0);
+    if (!state.hasStartedCurrentQuestion) {
+      state.hasStartedCurrentQuestion = true;
+      state.questionStartPerf = performance.now();
+      state.buzzQueue = [];
+      const cur = AudioEngine.getCurrentTime();
+      const startFrom = cur === 0 ? introStart : cur;
+      AudioEngine.start(track, state.currentTrackIndex, startFrom);
+    } else {
+      AudioEngine.start(track, state.currentTrackIndex);
+    }
+    if (state.gameState !== "revealed") state.gameState = "playing";
+  }
+  renderAllHostUI();
+  broadcastHostState();
+}
+
+function playFromChorus() {
+  if (!state.buzzerOpen && state.gameState !== "revealed") {
+    state.buzzerOpen = true;
+    showToast("🔓 解答ロックを自動解除してサビ頭出し再生します！");
+  }
+  const track = currentTrack();
+  document.getElementById("resumeBanner").style.display = "none";
+  state.hasStartedCurrentQuestion = true;
+  if (!state.questionStartPerf) state.questionStartPerf = performance.now();
+  AudioEngine.start(track, state.currentTrackIndex, Number(track.chorusSec) || 0);
+  if (state.gameState !== "revealed") state.gameState = "playing";
+  renderAllHostUI();
+  broadcastHostState();
+}
+
+function revealAnswer(autoPlayChorus = true) {
+  const track = currentTrack();
+  clearAnswerTimer();
+  state.gameState = "revealed";
+  state.buzzerOpen = false;
+  state.buzzedTeamId = null;
+  document.getElementById("judgeBox").style.display = "none";
+  document.getElementById("resumeBanner").style.display = "none";
+
+  AudioEngine.playSfxCorrect();
+  launchConfetti();
+
+  if (autoPlayChorus) {
+    AudioEngine.start(track, state.currentTrackIndex, Number(track.chorusSec) || 0);
+  }
+  renderAllHostUI();
+  broadcastHostState();
+}
+
+function handleIncomingBuzz(teamId) {
+  if (!state.buzzerOpen || state.gameState === "buzzed" || state.gameState === "revealed") {
+    return;
+  }
+  if (state.lockedTeams.includes(teamId)) return;
+
+  const team = state.teams.find(t => t.id === teamId);
+  if (!team) return;
+
+  AudioEngine.pause();
+  AudioEngine.playSfxBuzz();
+
+  const elapsed = state.questionStartPerf ? ((performance.now() - state.questionStartPerf) / 1000) : 0.12;
+  state.gameState = "buzzed";
+  state.buzzerOpen = false;
+  state.buzzedTeamId = teamId;
+  state.buzzQueue = [{ teamId, timeSec: elapsed }];
+
+  clearAnswerTimer();
+  state.answerSecondsLeft = 10;
+  document.getElementById("answerCountdownBadge").textContent = `残り ${state.answerSecondsLeft}秒`;
+  state.answerTimerId = setInterval(() => {
+    state.answerSecondsLeft--;
+    if (state.answerSecondsLeft <= 0) {
+      clearAnswerTimer();
+      document.getElementById("answerCountdownBadge").textContent = "時間切れ！";
+    } else {
+      document.getElementById("answerCountdownBadge").textContent = `残り ${state.answerSecondsLeft}秒`;
+    }
+  }, 1000);
+
+  renderAllHostUI();
+  broadcastHostState();
+}
+
+function cancelBuzz() {
+  if (state.gameState !== "buzzed") return;
+  clearAnswerTimer();
+  const team = state.teams.find(t => t.id === state.buzzedTeamId);
+  state.buzzedTeamId = null;
+  state.buzzQueue = [];
+  document.getElementById("judgeBox").style.display = "none";
+  document.getElementById("resumeBanner").style.display = "none";
+
+  const track = currentTrack();
+  AudioEngine.start(track, state.currentTrackIndex);
+  state.gameState = "playing";
+  state.buzzerOpen = true;
+
+  renderAllHostUI();
+  broadcastHostState();
+  showToast(`↩ ${team ? team.name + " の" : ""}回答を取り下げました（早押し受付・音楽を再開します）`);
+}
+
+function judgeAnswer(isCorrect) {
+  clearAnswerTimer();
+  const team = state.teams.find(t => t.id === state.buzzedTeamId);
+  if (!team) return;
+  const track = currentTrack();
+  const pts = getTrackPoints(track);
+
+  if (isCorrect) {
+    if (track && track.isPractice) {
+      showToast(`🎉 ${team.name} 練習問題正解！（練習のためスコア加算なし）`);
+    } else {
+      team.score += pts;
+      showToast(`🎉 ${team.name} 正解！ +${pts}pt`);
+    }
+    revealAnswer(true);
+  } else {
+    AudioEngine.playSfxWrong();
+    if (!state.lockedTeams.includes(team.id)) {
+      state.lockedTeams.push(team.id);
+    }
+    const penalty = (track && track.isPractice) ? 0 : Math.max(0, Number(state.penaltyPerWrong) || 0);
+    if (penalty > 0) {
+      team.score -= penalty;
+    }
+    state.buzzedTeamId = null;
+    state.buzzerOpen = false;
+    state.gameState = "paused_wrong";
+    document.getElementById("judgeBox").style.display = "none";
+    const banner = document.getElementById("resumeBanner");
+    const penaltyText = (track && track.isPractice)
+      ? "（練習問題のため減点なし）"
+      : (penalty > 0 ? ` / -${penalty}pt 減点` : "");
+    document.getElementById("resumeBannerText").textContent = `❌ ${team.name} 不正解！お手つきロック${penaltyText}（音楽・早押しは停止中）`;
+    banner.style.display = "block";
+
+    renderAllHostUI();
+    broadcastHostState();
+  }
+}
+
+function resumeAfterWrong() {
+  document.getElementById("resumeBanner").style.display = "none";
+  const track = currentTrack();
+  AudioEngine.start(track, state.currentTrackIndex);
+  state.gameState = "playing";
+  state.buzzerOpen = true;
+  renderAllHostUI();
+  broadcastHostState();
+}
+
+function changeTrack(delta) {
+  const nextIdx = state.currentTrackIndex + delta;
+  if (nextIdx < 0 || nextIdx >= state.tracks.length) {
+    showToast(delta < 0 ? "最初の曲です" : "最後の曲です");
+    return;
+  }
+  clearAnswerTimer();
+  state.currentTrackIndex = nextIdx;
+  const track = currentTrack();
+  const introStart = Math.max(0, Number(track.introSec) || 0);
+  AudioEngine.stop(true, introStart);
+  AudioEngine.setPosition(track, introStart);
+
+  state.gameState = "idle";
+  state.buzzerOpen = false;
+  state.lockedTeams = [];
+  state.buzzedTeamId = null;
+  state.buzzQueue = [];
+  state.hasStartedCurrentQuestion = false;
+
+  document.getElementById("judgeBox").style.display = "none";
+  document.getElementById("resumeBanner").style.display = "none";
+
+  renderAllHostUI();
+  broadcastHostState();
+}
+
+function unlockAllTeams() {
+  state.lockedTeams = [];
+  renderAllHostUI();
+  broadcastHostState();
+  showToast("全チームのロックを解除しました");
+}
+
+function adjustScore(teamId, delta) {
+  const t = state.teams.find(x => x.id === teamId);
+  if (t) {
+    t.score += delta;
+    renderScoreboard();
+    broadcastHostState();
+  }
+}
+
+function clearAnswerTimer() {
+  if (state.answerTimerId) {
+    clearInterval(state.answerTimerId);
+    state.answerTimerId = null;
+  }
+}
+
+/* ============================================================================
+   7. HOST UI RENDERING
+   ============================================================================ */
+function formatTime(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m}:${String(rem).padStart(2, "0")}`;
+}
+
+function updatePlaybackUI() {
+  const track = currentTrack();
+  const cur = AudioEngine.getCurrentTime();
+  const dur = AudioEngine.getDuration(track);
+  document.getElementById("timeCurrent").textContent = formatTime(cur);
+  document.getElementById("timeDuration").textContent = formatTime(dur);
+  const slider = document.getElementById("seekSlider");
+  slider.max = dur;
+  slider.value = cur;
+}
+
+function onSeekInput(val) {
+  state.hasStartedCurrentQuestion = true;
+  AudioEngine.seek(currentTrack(), parseFloat(val));
+}
+
+function onVolumeChange(val) {
+  AudioEngine.setVolume(val);
+}
+
+function renderRunnerUps() {
+  const el = document.getElementById("runnerUpList");
+  if (state.buzzQueue.length <= 1) {
+    el.textContent = "";
+    return;
+  }
+  const firstTime = state.buzzQueue[0].timeSec;
+  const others = state.buzzQueue.slice(1).map((b, idx) => {
+    const t = state.teams.find(x => x.id === b.teamId);
+    const diff = (b.timeSec - firstTime).toFixed(2);
+    return `${idx + 2}位: ${t ? t.name : ""} (+${diff}秒)`;
+  });
+  el.textContent = "タッチの差: " + others.join(" / ");
+}
+
+function renderAllHostUI() {
+  const track = currentTrack();
+  const isPlaying = AudioEngine.getIsPlaying();
+  const isRevealed = state.gameState === "revealed";
+  const trackPts = getTrackPoints(track);
+
+  const pillEl = document.getElementById("trackCounterPill");
+  pillEl.textContent = track && track.isPractice
+    ? `${getTrackLabel(state.currentTrackIndex)}`
+    : `${getTrackLabel(state.currentTrackIndex)}（${trackPts}pt）`;
+  if (track && track.isPractice) {
+    pillEl.style.background = "rgba(99, 102, 241, 0.22)";
+    pillEl.style.color = "#a5b4fc";
+    pillEl.style.borderColor = "rgba(129, 140, 248, 0.5)";
+  } else {
+    pillEl.style.background = "rgba(245, 158, 11, 0.14)";
+    pillEl.style.color = "var(--accent)";
+    pillEl.style.borderColor = "rgba(245, 158, 11, 0.4)";
+  }
+
+  const vinyl = document.getElementById("vinylDisc");
+  vinyl.classList.toggle("spinning", isPlaying);
+
+  const coverBox = document.getElementById("coverRevealBox");
+  const coverImg = document.getElementById("coverRevealImg");
+  if (isRevealed && track.coverUrl) {
+    coverImg.src = track.coverUrl;
+    coverBox.style.display = "block";
+  } else {
+    coverBox.style.display = "none";
+  }
+
+  const chip = document.getElementById("stageStatusChip");
+  chip.className = "status-chip";
+  if (state.gameState === "buzzed") {
+    chip.classList.add("buzzed");
+    chip.textContent = "🚨 早押し発生！解答判定中";
+  } else if (isRevealed) {
+    chip.classList.add("revealed");
+    chip.textContent = "🎉 正解発表！（早押しロック中）";
+  } else if (state.buzzerOpen) {
+    chip.classList.add("playing");
+    chip.textContent = "🔓 早押し受付中！（スマホ解除済み）";
+  } else if (state.gameState === "paused_wrong") {
+    chip.textContent = "⏸ 不正解により一時停止中（早押しロック中）";
+  } else {
+    chip.textContent = "🔒 早押しロック中（「解答ロック解除」で受付開始）";
+  }
+
+  const buzzLockBtn = document.getElementById("btnBuzzOpenToggle");
+  if (buzzLockBtn) {
+    buzzLockBtn.classList.toggle("open", state.buzzerOpen);
+    buzzLockBtn.textContent = state.buzzerOpen ? "🔓 早押し受付中（押してロック）" : "🔒 解答ロック解除";
+  }
+
+  document.getElementById("stageSongTitle").textContent = isRevealed ? track.title : "？？？？？？";
+  document.getElementById("stageSongArtist").textContent = isRevealed ? `アーティスト：${track.artist}` : "アーティスト：？？？";
+
+  const vinylLabel = document.getElementById("vinylLabel");
+  if (isRevealed && track.coverUrl) {
+    vinylLabel.innerHTML = `<img src="${track.coverUrl}" alt="ジャケット">`;
+  } else {
+    vinylLabel.innerHTML = "🎶";
+  }
+
+  const playBtn = document.getElementById("btnMainPlay");
+  playBtn.textContent = isPlaying ? "⏸ 一時停止" : "▶ イントロ再生";
+
+  const judgeBox = document.getElementById("judgeBox");
+  if (state.gameState === "buzzed" && state.buzzedTeamId) {
+    const bTeam = state.teams.find(t => t.id === state.buzzedTeamId);
+    judgeBox.style.display = "block";
+    document.getElementById("buzzedTeamTitle").textContent = bTeam ? bTeam.name : "";
+    document.getElementById("buzzedTeamTitle").style.color = bTeam ? bTeam.color : "#fff";
+    const firstT = state.buzzQueue[0] ? state.buzzQueue[0].timeSec.toFixed(2) : "0.00";
+    document.getElementById("buzzReactionBadge").textContent = `⏱ ${firstT}秒`;
+    document.getElementById("judgePointsLabel").textContent = trackPts;
+    const penalty = (track && track.isPractice) ? 0 : Math.max(0, Number(state.penaltyPerWrong) || 0);
+    document.getElementById("btnJudgeWrong").textContent = penalty > 0
+      ? `❌ 不正解（お手つきロック / -${penalty}pt）`
+      : `❌ 不正解（お手つきロック）`;
+    renderRunnerUps();
+  } else {
+    judgeBox.style.display = "none";
+  }
+
+  updatePlaybackUI();
+  renderScoreboard();
+  renderSplitBuzzer();
+}
+
+function renderScoreboard() {
+  const list = document.getElementById("scoreboardList");
+  const sorted = [...state.teams].sort((a, b) => b.score - a.score);
+  const uniqueClients = getUniqueConnectedClientMap();
+  list.innerHTML = sorted.map((t, idx) => {
+    let devCount = 0;
+    for (const assignedTeamId of uniqueClients.values()) {
+      if (assignedTeamId === t.id) devCount++;
+    }
+    const isLocked = state.lockedTeams.includes(t.id);
+    const isBuzzed = state.buzzedTeamId === t.id;
+    return `
+      <div class="team-row ${isLocked ? "locked" : ""} ${isBuzzed ? "buzzed" : ""}">
+        <div class="team-left">
+          <div class="rank-badge" style="background:${t.color};">${idx + 1}</div>
+          <div style="min-width:0;">
+            <div class="team-info-name">${escapeHtml(t.name)} ${isLocked ? "🔒" : ""}</div>
+            <div class="team-info-sub">📱 接続スマホ: ${devCount}台</div>
+          </div>
+        </div>
+        <div class="team-right">
+          <button type="button" class="btn-pt" onclick="adjustScore('${t.id}', -10)">-10</button>
+          <div class="score-val">${t.score}<span style="font-size:12px;">pt</span></div>
+          <button type="button" class="btn-pt plus" onclick="adjustScore('${t.id}', 10)">+10</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function toggleSplitBuzzer() {
+  state.splitBuzzerOn = !state.splitBuzzerOn;
+  const btn = document.getElementById("btnSplitToggle");
+  btn.textContent = `🎛 1画面スイッチ: ${state.splitBuzzerOn ? "ON" : "OFF"}`;
+  btn.classList.toggle("active", state.splitBuzzerOn);
+  document.getElementById("splitBuzzerPanel").style.display = state.splitBuzzerOn ? "block" : "none";
+  renderSplitBuzzer();
+}
+
+function renderSplitBuzzer() {
+  if (!state.splitBuzzerOn) return;
+  const grid = document.getElementById("splitBuzzerGrid");
+  const canBuzz = state.buzzerOpen && state.gameState !== "buzzed" && state.gameState !== "revealed";
+  grid.innerHTML = state.teams.map((t, i) => {
+    const disabled = !canBuzz || state.lockedTeams.includes(t.id);
+    return `<button type="button" class="btn-split-team" style="background:${t.color};" ${disabled ? "disabled" : ""} onclick="handleIncomingBuzz('${t.id}')">
+      [${i + 1}] ${escapeHtml(t.name)}
+    </button>`;
+  }).join("");
+}
+
+function switchHostTab(tab) {
+  const isQuiz = tab === "quiz";
+  document.getElementById("quizView").style.display = isQuiz ? "grid" : "none";
+  document.getElementById("settingsView").style.display = isQuiz ? "none" : "block";
+  document.getElementById("tabQuizBtn").classList.toggle("active", isQuiz);
+  document.getElementById("tabSettingsBtn").classList.toggle("active", !isQuiz);
+  if (!isQuiz) renderSettingsView();
+}
+
+/* ============================================================================
+   8. SETTINGS EDITOR (TEAMS & TRACKLIST)
+   ============================================================================ */
+function renderSettingsView() {
+  document.getElementById("penaltyPerWrongInput").value = state.penaltyPerWrong;
+
+  const tList = document.getElementById("teamSettingsList");
+  tList.innerHTML = state.teams.map((t, idx) => `
+    <div class="setting-row">
+      <input type="color" value="${t.color}" style="width:42px;height:36px;padding:2px;" onchange="updateTeamField(${idx}, 'color', this.value)">
+      <input type="text" value="${escapeHtml(t.name)}" style="flex:1;min-width:140px;" oninput="updateTeamField(${idx}, 'name', this.value)">
+      ${state.teams.length > 2 ? `<button type="button" class="btn-pt" style="color:#fca5a5;" onclick="removeTeam(${idx})">削除</button>` : ""}
+    </div>
+  `).join("");
+
+  const sList = document.getElementById("trackSettingsList");
+  let mainQNum = 0;
+  sList.innerHTML = state.tracks.map((s, idx) => {
+    const isPractice = Boolean(s.isPractice);
+    if (!isPractice) mainQNum++;
+    const labelText = isPractice ? "🎤 練習問題（本番1問目の前）" : `第${mainQNum}問`;
+    const ptsVal = isPractice ? 0 : (Number(s.points) > 0 ? Number(s.points) : state.pointsPerCorrect);
+
+    return `
+    <div class="track-edit-card" style="${isPractice ? "border-color:#6366f1;background:rgba(99,102,241,0.08);" : ""}">
+      <div class="track-edit-top">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <strong style="color:${isPractice ? "#a5b4fc" : "var(--accent)"};">${labelText}</strong>
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#cbd5e1;cursor:pointer;background:#1e293b;padding:4px 9px;border-radius:8px;border:1px solid #334155;">
+            <input type="checkbox" ${isPractice ? "checked" : ""} onchange="togglePracticeTrack(${idx}, this.checked)" style="accent-color:#818cf8;">
+            <span>練習問題にする</span>
+          </label>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button type="button" class="btn-pt" onclick="moveTrack(${idx}, -1)" ${idx === 0 ? "disabled style='opacity:0.4;cursor:not-allowed;'" : ""}>▲ 上へ</button>
+          <button type="button" class="btn-pt" onclick="moveTrack(${idx}, 1)" ${idx === state.tracks.length - 1 ? "disabled style='opacity:0.4;cursor:not-allowed;'" : ""}>▼ 下へ</button>
+          <button type="button" class="btn-pt" onclick="testPlayTrack(${idx})">▶ 試聴</button>
+          ${state.tracks.length > 1 ? `<button type="button" class="btn-pt" style="color:#fca5a5;" onclick="removeTrack(${idx})">削除</button>` : ""}
+        </div>
+      </div>
+      <div class="track-edit-fields">
+        <input type="text" placeholder="曲名" value="${escapeHtml(s.title)}" onchange="updateTrackField(${idx}, 'title', this.value)">
+        <input type="text" placeholder="アーティスト名" value="${escapeHtml(s.artist)}" onchange="updateTrackField(${idx}, 'artist', this.value)">
+      </div>
+      <div class="track-time-fields">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:12px;font-weight:800;color:#fbbf24;">🏆 正解得点:</span>
+          <input type="number" min="0" max="500" value="${ptsVal}" ${isPractice ? "disabled" : ""} style="width:74px;padding:6px 8px;${isPractice ? "opacity:0.5;" : ""}" onchange="updateTrackField(${idx}, 'points', Math.max(0, parseInt(this.value, 10) || 0))">
+          <span style="font-size:12px;color:var(--muted);">pt${isPractice ? "（練習は0pt固定）" : ""}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:12px;font-weight:800;color:#34d399;">▶ 通常開始秒:</span>
+          <input type="number" min="0" value="${Number(s.introSec) || 0}" style="width:74px;padding:6px 8px;" onchange="updateTrackField(${idx}, 'introSec', Math.max(0, parseFloat(this.value) || 0))">
+          <span style="font-size:12px;color:var(--muted);">秒</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:12px;font-weight:800;color:#818cf8;">🎵 正解サビ秒:</span>
+          <input type="number" min="0" value="${Number(s.chorusSec) || 0}" style="width:74px;padding:6px 8px;" onchange="updateTrackField(${idx}, 'chorusSec', Math.max(0, parseFloat(this.value) || 0))">
+          <span style="font-size:12px;color:var(--muted);">秒</span>
+        </div>
+      </div>
+      <div class="file-upload-row">
+        <label class="btn-nav" style="cursor:pointer;">
+          🎵 音源ファイル選択 (MP3/WAV/M4A)
+          <input type="file" accept="audio/*" style="display:none;" onchange="uploadTrackAudio(${idx}, this.files[0])">
+        </label>
+        <span>${escapeHtml(s.audioName)}</span>
+        <label class="btn-nav" style="cursor:pointer;">
+          🖼 ジャケット画像
+          <input type="file" accept="image/*" style="display:none;" onchange="uploadTrackCover(${idx}, this.files[0])">
+        </label>
+        ${s.coverUrl ? `<span style="color:#34d399;">✔ 画像設定済</span>` : ""}
+      </div>
+    </div>
+    `;
+  }).join("");
+}
+
+function updatePenaltySetting(val) {
+  state.penaltyPerWrong = Math.max(0, parseInt(val, 10) || 0);
+  autoSaveToIndexedDB();
+  renderAllHostUI();
+}
+
+function updateTeamField(idx, key, val) {
+  state.teams[idx][key] = val;
+  autoSaveToIndexedDB();
+  renderAllHostUI();
+  broadcastHostState();
+}
+
+function addTeam() {
+  if (state.teams.length >= 8) {
+    showToast("チームは最大8チームまで追加できます");
+    return;
+  }
+  const palette = ["#ef4444", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
+  const n = state.teams.length;
+  state.teams.push({
+    id: "t" + Date.now() + "_" + n,
+    name: `${String.fromCharCode(65 + n)}チーム`,
+    color: palette[n % palette.length],
+    score: 0
+  });
+  autoSaveToIndexedDB();
+  renderSettingsView();
+  renderAllHostUI();
+  broadcastHostState();
+  setTimeout(() => broadcastHostState(), 300);
+}
+
+function removeTeam(idx) {
+  if (state.teams.length <= 2) return;
+  const removedId = state.teams[idx].id;
+  state.teams.splice(idx, 1);
+  for (const entry of connectedPeers.values()) {
+    if (entry.teamId === removedId) entry.teamId = null;
+  }
+  for (const entry of localTabClients.values()) {
+    if (entry.teamId === removedId) entry.teamId = null;
+  }
+  for (const entry of mqttClients.values()) {
+    if (entry.teamId === removedId) entry.teamId = null;
+  }
+  autoSaveToIndexedDB();
+  renderSettingsView();
+  renderAllHostUI();
+  broadcastHostState();
+  setTimeout(() => broadcastHostState(), 300);
+}
+
+function removeTrack(idx) {
+  if (state.tracks.length <= 1) return;
+  state.tracks.splice(idx, 1);
+  if (state.currentTrackIndex >= state.tracks.length) {
+    state.currentTrackIndex = state.tracks.length - 1;
+  }
+  const track = currentTrack();
+  const introStart = Math.max(0, Number(track.introSec) || 0);
+  AudioEngine.stop(true, introStart);
+  AudioEngine.setPosition(track, introStart);
+  state.gameState = "idle";
+  state.buzzerOpen = false;
+  state.hasStartedCurrentQuestion = false;
+  autoSaveToIndexedDB();
+  renderSettingsView();
+  renderAllHostUI();
+}
+
+function updateTrackField(idx, key, val) {
+  state.tracks[idx][key] = val;
+  if (idx === state.currentTrackIndex && key === "introSec" && !AudioEngine.getIsPlaying() && !state.hasStartedCurrentQuestion) {
+    const track = currentTrack();
+    const introStart = Math.max(0, Number(track.introSec) || 0);
+    AudioEngine.setPosition(track, introStart);
+  }
+  autoSaveToIndexedDB();
+  renderAllHostUI();
+}
+
+function togglePracticeTrack(idx, checked) {
+  state.tracks[idx].isPractice = Boolean(checked);
+  if (checked) {
+    state.tracks[idx].points = 0;
+    if (idx > 0) {
+      const currentId = currentTrack().id;
+      const [moved] = state.tracks.splice(idx, 1);
+      state.tracks.unshift(moved);
+      const newIdx = state.tracks.findIndex(t => t.id === currentId);
+      if (newIdx !== -1) state.currentTrackIndex = newIdx;
+    }
+  } else {
+    state.tracks[idx].points = state.pointsPerCorrect;
+  }
+  autoSaveToIndexedDB();
+  renderSettingsView();
+  renderAllHostUI();
+}
+
+function addBlankTrack() {
+  state.tracks.push({
+    id: "s" + Date.now(),
+    isPractice: false,
+    points: state.pointsPerCorrect,
+    title: `新曲タイトル #${state.tracks.length + 1}`,
+    artist: "アーティスト名",
+    introSec: 0,
+    chorusSec: 15,
+    audioUrl: null,
+    audioBlob: null,
+    audioName: "内蔵シンセデモ音源",
+    coverUrl: null
+  });
+  autoSaveToIndexedDB();
+  renderSettingsView();
+  renderAllHostUI();
+}
+
+function moveTrack(idx, delta) {
+  const targetIdx = idx + delta;
+  if (targetIdx < 0 || targetIdx >= state.tracks.length) return;
+  const currentId = currentTrack().id;
+  const temp = state.tracks[idx];
+  state.tracks[idx] = state.tracks[targetIdx];
+  state.tracks[targetIdx] = temp;
+  const newCurrentIdx = state.tracks.findIndex(t => t.id === currentId);
+  if (newCurrentIdx !== -1) state.currentTrackIndex = newCurrentIdx;
+  autoSaveToIndexedDB();
+  renderSettingsView();
+  renderAllHostUI();
+}
+
+function uploadTrackAudio(idx, file) {
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  state.tracks[idx].audioUrl = url;
+  state.tracks[idx].audioBlob = file;
+  state.tracks[idx].audioName = file.name;
+  const cleanName = file.name.replace(/\.[^/.]+$/, "");
+  if (state.tracks[idx].title.includes("デモ音源") || state.tracks[idx].title.startsWith("新曲タイトル")) {
+    state.tracks[idx].title = cleanName;
+  }
+  autoSaveToIndexedDB();
+  renderSettingsView();
+  renderAllHostUI();
+  showToast(`「${file.name}」を設定しました`);
+}
+
+function bulkUploadTracks(files) {
+  if (!files || !files.length) return;
+  Array.from(files).forEach((file) => {
+    const url = URL.createObjectURL(file);
+    const cleanName = file.name.replace(/\.[^/.]+$/, "");
+    state.tracks.push({
+      id: "s" + Date.now() + Math.random(),
+      isPractice: false,
+      points: state.pointsPerCorrect,
+      title: cleanName,
+      artist: "アーティスト未設定",
+      introSec: 0,
+      chorusSec: 15,
+      audioUrl: url,
+      audioBlob: file,
+      audioName: file.name,
+      coverUrl: null
+    });
+  });
+  autoSaveToIndexedDB();
+  renderSettingsView();
+  renderAllHostUI();
+  showToast(`${files.length}曲を追加しました`);
+}
+
+function uploadTrackCover(idx, file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    state.tracks[idx].coverUrl = e.target.result;
+    autoSaveToIndexedDB();
+    renderSettingsView();
+    renderAllHostUI();
+    showToast("ジャケット画像を設定しました");
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ============================================================================
+   8.2 EXCEL EXPORT / IMPORT
+   ============================================================================ */
+function exportTracksExcel() {
+  if (typeof XLSX === "undefined") {
+    showToast("⚠️ Excelライブラリの読み込み中です。少し待ってからお試しください");
+    return;
+  }
+  const rows = [
+    ["種別(練習/本番)", "曲名", "アーティスト名", "正解得点(pt)", "通常開始秒", "正解サビ秒"],
+    ...state.tracks.map(t => [
+      t.isPractice ? "練習" : "本番",
+      t.title || "",
+      t.artist || "",
+      t.isPractice ? 0 : (Number(t.points) || state.pointsPerCorrect),
+      Number(t.introSec) || 0,
+      Number(t.chorusSec) || 0
+    ])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"] = [{ wch: 16 }, { wch: 30 }, { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "イントロクイズ曲リスト");
+  XLSX.writeFile(wb, `イントロクイズ曲リスト枠_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  showToast(`📤 現在の ${state.tracks.length}曲分のリスト枠をExcel書き出ししました！`);
+}
+
+function importTracksExcel(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = "";
+  if (!file) return;
+  if (typeof XLSX === "undefined") {
+    showToast("⚠️ Excelライブラリの読み込み中です。少し待ってからお試しください");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+      const newTracks = [];
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i].map(c => String(c ?? "").trim());
+        if (!row.some(Boolean)) continue;
+
+        if (i === 0 && (row[0].includes("種別") || row[0].includes("曲名") || row[1] === "曲名")) {
+          continue;
+        }
+
+        let isPractice = false;
+        let title = "";
+        let artist = "";
+        let pts = state.pointsPerCorrect;
+        let introSec = 0;
+        let chorusSec = 15;
+
+        if (row[0] === "練習" || row[0] === "本番") {
+          isPractice = (row[0] === "練習");
+          title = row[1] || "";
+          artist = row[2] || "";
+          const parsedPts = parseInt(row[3], 10);
+          pts = isPractice ? 0 : (!isNaN(parsedPts) && parsedPts >= 0 ? parsedPts : state.pointsPerCorrect);
+          introSec = Math.max(0, parseFloat(row[4]) || 0);
+          chorusSec = Math.max(0, parseFloat(row[5]) || 0);
+        } else {
+          title = row[0] || "";
+          artist = row[1] || "";
+          const parsedPts = parseInt(row[2], 10);
+          pts = !isNaN(parsedPts) && parsedPts >= 0 ? parsedPts : state.pointsPerCorrect;
+          introSec = Math.max(0, parseFloat(row[3]) || 0);
+          chorusSec = Math.max(0, parseFloat(row[4]) || 0);
+        }
+
+        if (!title) continue;
+
+        const existing = state.tracks.find(t => t.title === title);
+        newTracks.push({
+          id: existing ? existing.id : ("s" + Date.now() + "_" + i),
+          isPractice,
+          points: pts,
+          title,
+          artist: artist || "アーティスト未設定",
+          introSec,
+          chorusSec,
+          audioUrl: existing ? existing.audioUrl : null,
+          audioBlob: existing ? existing.audioBlob : null,
+          audioName: existing ? existing.audioName : "⚠️ 未設定（下のボタンから音源を選択）",
+          coverUrl: existing ? existing.coverUrl : null
+        });
+      }
+
+      if (newTracks.length === 0) {
+        showToast("⚠️ 有効な曲データが見つかりませんでした");
+        return;
+      }
+
+      const practices = newTracks.filter(t => t.isPractice);
+      const mains = newTracks.filter(t => !t.isPractice);
+      state.tracks = [...practices, ...mains];
+      state.currentTrackIndex = 0;
+
+      const firstTrack = currentTrack();
+      const introStart = Math.max(0, Number(firstTrack.introSec) || 0);
+      AudioEngine.stop(true, introStart);
+      AudioEngine.setPosition(firstTrack, introStart);
+      state.gameState = "idle";
+      state.buzzerOpen = false;
+      state.lockedTeams = [];
+      state.buzzedTeamId = null;
+      state.hasStartedCurrentQuestion = false;
+
+      autoSaveToIndexedDB();
+      renderSettingsView();
+      renderAllHostUI();
+      broadcastHostState();
+      showToast(`📥 Excelから ${state.tracks.length}曲の枠を読み込みました！`);
+    } catch (err) {
+      showToast("⚠️ Excelファイルの読み込みに失敗しました");
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ============================================================================
+   8.5 FULL CONFIG EXPORT / IMPORT & INDEXEDDB AUTO-SAVE
+   ============================================================================ */
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function exportFullConfig() {
+  try {
+    showToast("⏳ 音源・画像を含めて書き出し準備中...");
+    const serializedTracks = [];
+    for (const t of state.tracks) {
+      let audioDataUrl = null;
+      if (t.audioBlob) {
+        audioDataUrl = await blobToDataURL(t.audioBlob);
+      } else if (t.audioUrl && t.audioUrl.startsWith("data:")) {
+        audioDataUrl = t.audioUrl;
+      } else if (t.audioUrl && t.audioUrl.startsWith("blob:")) {
+        try {
+          const resp = await fetch(t.audioUrl);
+          const b = await resp.blob();
+          audioDataUrl = await blobToDataURL(b);
+        } catch (e) {}
+      }
+      serializedTracks.push({
+        id: t.id,
+        isPractice: Boolean(t.isPractice),
+        points: Number(t.points) || 0,
+        title: t.title,
+        artist: t.artist,
+        introSec: Number(t.introSec) || 0,
+        chorusSec: Number(t.chorusSec) || 0,
+        audioName: t.audioName,
+        audioDataUrl,
+        coverUrl: t.coverUrl || null
+      });
+    }
+
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      penaltyPerWrong: state.penaltyPerWrong,
+      teams: state.teams.map(tm => ({ id: tm.id, name: tm.name, color: tm.color, score: 0 })),
+      tracks: serializedTracks
+    };
+
+    const jsonStr = JSON.stringify(payload);
+    const fileBlob = new Blob([jsonStr], { type: "application/json" });
+    const dlUrl = URL.createObjectURL(fileBlob);
+    const a = document.createElement("a");
+    a.href = dlUrl;
+    a.download = `イントロクイズまるごと設定_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(dlUrl), 3000);
+    showToast(`📤 まるごと設定ファイル（${serializedTracks.length}曲）を書き出しました！`);
+  } catch (err) {
+    showToast("⚠️ 書き出し中にエラーが発生しました");
+  }
+}
+
+function importFullConfig(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = "";
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      if (!parsed || !Array.isArray(parsed.tracks) || parsed.tracks.length === 0) {
+        showToast("⚠️ 有効なまるごと設定ファイルではありません");
+        return;
+      }
+
+      if (typeof parsed.penaltyPerWrong === "number") {
+        state.penaltyPerWrong = parsed.penaltyPerWrong;
+      }
+      if (Array.isArray(parsed.teams) && parsed.teams.length >= 2) {
+        state.teams = parsed.teams.map(tm => ({ ...tm, score: Number(tm.score) || 0 }));
+      }
+
+      const restoredTracks = [];
+      for (const t of parsed.tracks) {
+        let audioUrl = null;
+        let audioBlob = null;
+        if (t.audioDataUrl && t.audioDataUrl.startsWith("data:")) {
+          try {
+            const resp = await fetch(t.audioDataUrl);
+            audioBlob = await resp.blob();
+            audioUrl = URL.createObjectURL(audioBlob);
+          } catch (err) {
+            audioUrl = t.audioDataUrl;
+          }
+        }
+        restoredTracks.push({
+          id: t.id || ("s" + Date.now() + Math.random()),
+          isPractice: Boolean(t.isPractice),
+          points: Number(t.points) || 0,
+          title: t.title || "無題",
+          artist: t.artist || "",
+          introSec: Number(t.introSec) || 0,
+          chorusSec: Number(t.chorusSec) || 0,
+          audioUrl,
+          audioBlob,
+          audioName: t.audioName || "内蔵シンセデモ音源",
+          coverUrl: t.coverUrl || null
+        });
+      }
+
+      state.tracks = restoredTracks;
+      state.currentTrackIndex = 0;
+      const firstTrack = currentTrack();
+      const introStart = Math.max(0, Number(firstTrack.introSec) || 0);
+      AudioEngine.stop(true, introStart);
+      AudioEngine.setPosition(firstTrack, introStart);
+      state.gameState = "idle";
+      state.buzzerOpen = false;
+      state.lockedTeams = [];
+      state.buzzedTeamId = null;
+      state.hasStartedCurrentQuestion = false;
+
+      autoSaveToIndexedDB();
+      renderSettingsView();
+      renderAllHostUI();
+      broadcastHostState();
+      showToast(`📥 まるごと設定を復元しました！（全${restoredTracks.length}曲）`);
+    } catch (err) {
+      showToast("⚠️ 設定ファイルの読み込みに失敗しました");
+    }
+  };
+  reader.readAsText(file);
+}
+
+const IDB_NAME = "BounenkaiIntroQuizDB";
+const IDB_STORE = "backup";
+
+function openQuizDB() {
+  return new Promise((resolve, reject) => {
+    try {
+      const req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+async function autoSaveToIndexedDB() {
+  try {
+    const db = await openQuizDB();
+    const storableTracks = state.tracks.map(t => ({
+      id: t.id,
+      isPractice: Boolean(t.isPractice),
+      points: Number(t.points) || 0,
+      title: t.title,
+      artist: t.artist,
+      introSec: Number(t.introSec) || 0,
+      chorusSec: Number(t.chorusSec) || 0,
+      audioBlob: t.audioBlob || null,
+      audioName: t.audioName,
+      coverUrl: t.coverUrl || null
+    }));
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).put({
+      penaltyPerWrong: state.penaltyPerWrong,
+      teams: state.teams.map(tm => ({ id: tm.id, name: tm.name, color: tm.color, score: 0 })),
+      tracks: storableTracks
+    }, "latest");
+  } catch (e) {}
+}
+
+async function restoreFromIndexedDB() {
+  try {
+    const db = await openQuizDB();
+    return await new Promise((resolve) => {
+      const tx = db.transaction(IDB_STORE, "readonly");
+      const req = tx.objectStore(IDB_STORE).get("latest");
+      req.onsuccess = () => {
+        const data = req.result;
+        if (!data || !Array.isArray(data.tracks) || data.tracks.length === 0) {
+          resolve(false);
+          return;
+        }
+        if (typeof data.penaltyPerWrong === "number") state.penaltyPerWrong = data.penaltyPerWrong;
+        if (Array.isArray(data.teams) && data.teams.length >= 2) {
+          state.teams = data.teams.map(tm => ({ ...tm, score: 0 }));
+        }
+        state.tracks = data.tracks.map(t => ({
+          ...t,
+          audioUrl: t.audioBlob ? URL.createObjectURL(t.audioBlob) : null
+        }));
+        resolve(true);
+      };
+      req.onerror = () => resolve(false);
+    });
+  } catch (e) {
+    return false;
+  }
+}
+
+function testPlayTrack(idx) {
+  state.currentTrackIndex = idx;
+  const track = currentTrack();
+  const introStart = Math.max(0, Number(track.introSec) || 0);
+  AudioEngine.stop(true, introStart);
+  AudioEngine.setPosition(track, introStart);
+  state.gameState = "idle";
+  state.lockedTeams = [];
+  state.buzzedTeamId = null;
+  state.hasStartedCurrentQuestion = false;
+  switchHostTab("quiz");
+  togglePlayPause();
+}
+
+/* ============================================================================
+   9. SMARTPHONE / CHROMEBOOK PLAYER CLIENT LOGIC (?room=XXXX)
+   ============================================================================ */
+let mobilePeer = null;
+let mobileConn = null;
+let mobileMqttClient = null;
+let mobileMqttConnected = false;
+let mobileBroadcastChannel = null;
+let mobileBroadcastConnected = false;
+let mobileRoomId = "";
+let mobileSelectedTeamId = null;
+let lastAppliedHostTs = 0;
+let mobileHostState = {
+  teams: JSON.parse(JSON.stringify(DEFAULT_TEAMS)),
+  lockedTeams: [],
+  buzzedTeamId: null,
+  gameState: "idle",
+  buzzerOpen: false,
+  syncedFromHost: false
+};
+let mobileHeartbeatTimer = null;
+let mobileReconnectTimer = null;
+let lastMobileBuzzAt = 0;
+let wakeLockSentinel = null;
+
+function getMobileClientId() {
+  try {
+    let cid = sessionStorage.getItem("bounenkai_client_id");
+    if (!cid) {
+      cid = "m_" + Math.random().toString(36).slice(2, 10);
+      sessionStorage.setItem("bounenkai_client_id", cid);
+    }
+    return cid;
+  } catch (e) {
+    return "m_" + Math.random().toString(36).slice(2, 10);
+  }
+}
+
+async function requestScreenWakeLock() {
+  try {
+    if ("wakeLock" in navigator && !wakeLockSentinel) {
+      wakeLockSentinel = await navigator.wakeLock.request("screen");
+      wakeLockSentinel.addEventListener("release", () => {
+        wakeLockSentinel = null;
+      });
+    }
+  } catch (e) {}
+}
+
+function applyIncomingHostState(msg) {
+  if (!msg || msg.type !== "HOST_STATE") return;
+  const incomingTs = Number(msg.ts) || 0;
+  if (incomingTs > 0 && lastAppliedHostTs > 0 && incomingTs + 1500 < lastAppliedHostTs) {
+    return;
+  }
+  if (incomingTs > lastAppliedHostTs) {
+    lastAppliedHostTs = incomingTs;
+  }
+
+  mobileHostState = {
+    teams: Array.isArray(msg.teams) && msg.teams.length > 0 ? msg.teams : mobileHostState.teams,
+    lockedTeams: Array.isArray(msg.lockedTeams) ? msg.lockedTeams : [],
+    buzzedTeamId: msg.buzzedTeamId || null,
+    gameState: msg.gameState || "idle",
+    buzzerOpen: Boolean(msg.buzzerOpen),
+    syncedFromHost: true
+  };
+  const statusEl = document.getElementById("mobileConnStatus");
+  if (statusEl) {
+    statusEl.style.color = "#34d399";
+    statusEl.textContent = "● PCホスト接続完了！";
+  }
+  renderMobileUI();
+}
+
+function setupMobileMqtt(roomId, brokerIdx = 0) {
+  if (mobileMqttClient) {
+    try { mobileMqttClient.end(true); } catch (e) {}
+    mobileMqttClient = null;
+  }
+  mobileMqttConnected = false;
+
+  if (typeof mqtt === "undefined" || !roomId) return;
+  const brokerUrl = MQTT_BROKERS[brokerIdx % MQTT_BROKERS.length];
+  const { stateTopic } = getMqttTopics(roomId);
+
+  try {
+    const client = mqtt.connect(brokerUrl, {
+      clientId: `player_${roomId}_${getMobileClientId()}_${Math.random().toString(36).slice(2, 6)}`,
+      clean: true,
+      connectTimeout: 5000,
+      reconnectPeriod: 2000
+    });
+    mobileMqttClient = client;
+
+    const fallbackTimer = setTimeout(() => {
+      if (!mobileMqttConnected && mobileMqttClient === client && mobileRoomId === roomId) {
+        setupMobileMqtt(roomId, brokerIdx + 1);
+      }
+    }, 5500);
+
+    client.on("connect", () => {
+      clearTimeout(fallbackTimer);
+      mobileMqttConnected = true;
+      try { client.subscribe(stateTopic, { qos: 0 }); } catch (e) {}
+      sendMobileMsg({ type: "REQUEST_SYNC", teamId: mobileSelectedTeamId });
+      if (mobileSelectedTeamId) {
+        sendMobileMsg({ type: "JOIN_TEAM", teamId: mobileSelectedTeamId });
+      }
+    });
+
+    client.on("message", (topic, payloadBuf) => {
+      if (topic !== stateTopic) return;
+      try {
+        const msg = JSON.parse(payloadBuf.toString());
+        if (msg && msg.type === "HOST_STATE") {
+          applyIncomingHostState(msg);
+        }
+      } catch (e) {}
+    });
+
+    client.on("close", () => {
+      mobileMqttConnected = false;
+    });
+
+    client.on("error", () => {
+      mobileMqttConnected = false;
+    });
+  } catch (e) {}
+}
+
+function setupMobileBroadcastChannel(roomId) {
+  if (mobileBroadcastChannel) {
+    try { mobileBroadcastChannel.close(); } catch (e) {}
+    mobileBroadcastChannel = null;
+  }
+  mobileBroadcastConnected = false;
+  if (typeof BroadcastChannel === "undefined" || !roomId) return;
+  try {
+    mobileBroadcastChannel = new BroadcastChannel(`bounenkai-intro-${roomId}`);
+    mobileBroadcastChannel.onmessage = (ev) => {
+      const msg = ev.data;
+      if (msg && msg.type === "HOST_STATE") {
+        mobileBroadcastConnected = true;
+        applyIncomingHostState(msg);
+      }
+    };
+    mobileBroadcastChannel.postMessage({
+      type: "REQUEST_SYNC",
+      clientId: getMobileClientId(),
+      teamId: mobileSelectedTeamId
+    });
+  } catch (e) {}
+}
+
+function initMobileMode(roomParam) {
+  document.getElementById("hostApp").style.display = "none";
+  document.getElementById("mobileApp").style.display = "flex";
+
+  renderMobileUI();
+
+  window.addEventListener("beforeunload", () => {
+    sendMobileMsg({ type: "LEAVE_CLIENT", teamId: mobileSelectedTeamId });
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      requestScreenWakeLock();
+      sendMobileMsg({ type: "REQUEST_SYNC", teamId: mobileSelectedTeamId });
+      if ((!mobileConn || !mobileConn.open) && !mobileMqttConnected && mobileRoomId) {
+        connectToHostRoom(mobileRoomId, true);
+      }
+    }
+  });
+
+  if (roomParam && /^\d{4}$/.test(roomParam)) {
+    try {
+      const savedTeam = sessionStorage.getItem(`bounenkai_team_${roomParam}`);
+      if (savedTeam) {
+        mobileSelectedTeamId = savedTeam;
+        renderMobileUI();
+      }
+    } catch (e) {}
+    connectToHostRoom(roomParam, false);
+  } else {
+    document.getElementById("mobileManualConnect").style.display = "block";
+    document.getElementById("mobileConnStatus").textContent = "● ROOM IDを入力してください";
+  }
+}
+
+function connectManualRoom() {
+  const val = document.getElementById("manualRoomInput").value.trim();
+  if (!/^\d{4}$/.test(val)) return showToast("4桁の数字を入力してください");
+  document.getElementById("mobileManualConnect").style.display = "none";
+  try {
+    const savedTeam = sessionStorage.getItem(`bounenkai_team_${val}`);
+    if (savedTeam) {
+      mobileSelectedTeamId = savedTeam;
+      renderMobileUI();
+    }
+  } catch (e) {}
+  connectToHostRoom(val, false);
+}
+
+function manualMobileReconnect() {
+  if (!mobileRoomId) {
+    document.getElementById("mobileManualConnect").style.display = "block";
+    return;
+  }
+  showToast("PCホストへ再接続・最新状態を同期中...");
+  lastAppliedHostTs = 0;
+  sendMobileMsg({ type: "REQUEST_SYNC", teamId: mobileSelectedTeamId });
+  if (mobileSelectedTeamId) {
+    sendMobileMsg({ type: "JOIN_TEAM", teamId: mobileSelectedTeamId });
+  }
+  if (mobilePeer) {
+    try { mobilePeer.destroy(); } catch (e) {}
+    mobilePeer = null;
+  }
+  connectToHostRoom(mobileRoomId, false);
+}
+
+function scheduleAutoReconnect(roomId) {
+  if (mobileReconnectTimer) clearTimeout(mobileReconnectTimer);
+  mobileReconnectTimer = setTimeout(() => {
+    if ((!mobileConn || !mobileConn.open) && mobileRoomId === roomId) {
+      connectToHostRoom(roomId, true);
+    }
+  }, 1500);
+}
+
+function getIceServersConfig() {
+  return [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun.cloudflare.com:3478" }
+  ];
+}
+
+function sendMobileMsg(obj) {
+  const enriched = {
+    ...obj,
+    clientId: getMobileClientId(),
+    actionId: `${getMobileClientId()}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+  };
+  let sent = false;
+  if (mobileMqttClient && mobileMqttConnected && mobileRoomId) {
+    try {
+      const { actionTopic } = getMqttTopics(mobileRoomId);
+      mobileMqttClient.publish(actionTopic, JSON.stringify(enriched), { qos: 0 });
+      sent = true;
+    } catch (e) {}
+  }
+  if (mobileBroadcastChannel) {
+    try {
+      mobileBroadcastChannel.postMessage(enriched);
+      sent = true;
+    } catch (e) {}
+  }
+  if (mobileConn) {
+    try {
+      if (mobileConn.open) {
+        mobileConn.send(enriched);
+        sent = true;
+      } else if (mobileConn.dataChannel && mobileConn.dataChannel.readyState === "open") {
+        mobileConn.dataChannel.send(JSON.stringify(enriched));
+        sent = true;
+      }
+    } catch (e) {}
+  }
+  return sent;
+}
+
+function connectToHostRoom(roomId, isSilent = false) {
+  mobileRoomId = roomId;
+  document.getElementById("mobileRoomDisplay").textContent = roomId;
+  setupMobileBroadcastChannel(roomId);
+  setupMobileMqtt(roomId, 0);
+
+  const statusEl = document.getElementById("mobileConnStatus");
+  if (!isSilent && !mobileHostState.syncedFromHost) {
+    statusEl.style.color = "#fbbf24";
+    statusEl.textContent = "● PCホストへ接続中...";
+  }
+
+  if (mobileReconnectTimer) {
+    clearTimeout(mobileReconnectTimer);
+    mobileReconnectTimer = null;
+  }
+  if (mobileHeartbeatTimer) {
+    clearInterval(mobileHeartbeatTimer);
+    mobileHeartbeatTimer = null;
+  }
+  if (mobileConn) {
+    try { mobileConn.close(); } catch (e) {}
+    mobileConn = null;
+  }
+
+  mobileHeartbeatTimer = setInterval(() => {
+    sendMobileMsg({ type: "PING", teamId: mobileSelectedTeamId });
+  }, 3000);
+
+  try {
+    if (typeof Peer === "undefined") return;
+
+    if (mobilePeer && !mobilePeer.destroyed && mobilePeer.open) {
+      openDataConnection(roomId);
+      return;
+    }
+
+    if (mobilePeer) {
+      try { mobilePeer.destroy(); } catch (e) {}
+      mobilePeer = null;
+    }
+
+    mobilePeer = new Peer({
+      debug: 0,
+      config: { iceServers: getIceServersConfig() }
+    });
+
+    mobilePeer.on("open", () => {
+      openDataConnection(roomId);
+    });
+
+    mobilePeer.on("disconnected", () => {
+      try { mobilePeer.reconnect(); } catch (e) {}
+    });
+
+    mobilePeer.on("error", (err) => {
+      if (mobileMqttConnected || mobileBroadcastConnected || mobileHostState.syncedFromHost) return;
+      if (err && err.type === "peer-unavailable") {
+        statusEl.style.color = "#ef4444";
+        statusEl.textContent = "● PCホストが見つかりません（ID確認）";
+        document.getElementById("mobileManualConnect").style.display = "block";
+      } else {
+        statusEl.style.color = "#fbbf24";
+        statusEl.textContent = "● 接続待機中（自動リトライ中...）";
+        scheduleAutoReconnect(roomId);
+      }
+    });
+  } catch (e) {
+    mobilePeer = null;
+  }
+}
+
+function openDataConnection(roomId) {
+  const statusEl = document.getElementById("mobileConnStatus");
+  const conn = mobilePeer.connect(`bounenkai-intro-${roomId}`, {
+    reliable: true,
+    serialization: "json",
+    metadata: { clientId: getMobileClientId() }
+  });
+  mobileConn = conn;
+
+  conn.on("data", (rawMsg) => {
+    let msg = rawMsg;
+    if (typeof rawMsg === "string") {
+      try { msg = JSON.parse(rawMsg); } catch (e) { return; }
+    }
+    if (msg && msg.type === "HOST_STATE") {
+      applyIncomingHostState(msg);
+    }
+  });
+
+  const openTimeout = setTimeout(() => {
+    if (!conn.open && mobileRoomId === roomId) {
+      try { conn.close(); } catch (e) {}
+      scheduleAutoReconnect(roomId);
+    }
+  }, 3500);
+
+  conn.on("open", () => {
+    clearTimeout(openTimeout);
+    statusEl.style.color = "#34d399";
+    statusEl.textContent = "● PCホスト接続完了！";
+    sendMobileMsg({ type: "REQUEST_SYNC", teamId: mobileSelectedTeamId });
+    if (mobileSelectedTeamId) {
+      sendMobileMsg({ type: "JOIN_TEAM", teamId: mobileSelectedTeamId });
+    }
+    setTimeout(() => {
+      sendMobileMsg({ type: "REQUEST_SYNC", teamId: mobileSelectedTeamId });
+      if (mobileSelectedTeamId) sendMobileMsg({ type: "JOIN_TEAM", teamId: mobileSelectedTeamId });
+    }, 300);
+    renderMobileUI();
+  });
+
+  conn.on("close", () => {
+    clearTimeout(openTimeout);
+    if (!mobileMqttConnected && !mobileBroadcastConnected) {
+      mobileHostState.syncedFromHost = false;
+      statusEl.style.color = "#fbbf24";
+      statusEl.textContent = "● 切断されました（自動再接続中...）";
+      renderMobileUI();
+    }
+    scheduleAutoReconnect(roomId);
+  });
+
+  conn.on("error", () => {
+    clearTimeout(openTimeout);
+    if (!mobileMqttConnected && !mobileBroadcastConnected) {
+      mobileHostState.syncedFromHost = false;
+      statusEl.style.color = "#fbbf24";
+      statusEl.textContent = "● 通信エラー（自動再接続中...）";
+      renderMobileUI();
+    }
+    scheduleAutoReconnect(roomId);
+  });
+}
+
+function selectMobileTeam(teamId) {
+  requestScreenWakeLock();
+  mobileSelectedTeamId = teamId;
+  if (mobileRoomId) {
+    try { sessionStorage.setItem(`bounenkai_team_${mobileRoomId}`, teamId); } catch (e) {}
+  }
+  renderMobileUI();
+
+  sendMobileMsg({ type: "JOIN_TEAM", teamId });
+  sendMobileMsg({ type: "REQUEST_SYNC", teamId });
+  if ((!mobileConn || !mobileConn.open) && !mobileMqttConnected && !mobileBroadcastConnected && mobileRoomId) {
+    connectToHostRoom(mobileRoomId, true);
+  }
+}
+
+function leaveMobileTeam() {
+  mobileSelectedTeamId = null;
+  if (mobileRoomId) {
+    try { sessionStorage.removeItem(`bounenkai_team_${mobileRoomId}`); } catch (e) {}
+  }
+  renderMobileUI();
+
+  sendMobileMsg({ type: "JOIN_TEAM", teamId: null });
+  sendMobileMsg({ type: "REQUEST_SYNC", teamId: null });
+}
+
+function handleMobileBuzz() {
+  const now = Date.now();
+  if (now - lastMobileBuzzAt < 350) return;
+  lastMobileBuzzAt = now;
+
+  if (!mobileSelectedTeamId) return;
+  const btn = document.getElementById("massiveBuzzerBtn");
+  if (btn && btn.disabled) return;
+
+  if (navigator.vibrate) {
+    try { navigator.vibrate(90); } catch (err) {}
+  }
+
+  if (sendMobileMsg({ type: "BUZZ", teamId: mobileSelectedTeamId })) {
+    document.getElementById("buzzerMainText").textContent = "送信完了！";
+    document.getElementById("buzzerSubText").textContent = "PC画面の判定をお待ちください...";
+  } else {
+    showToast("PCと接続中です。少し待つか右上の「再接続」を押してください");
+    if (mobileRoomId) connectToHostRoom(mobileRoomId, true);
+  }
+}
+
+function handleMobileCancelBuzz() {
+  if (!mobileSelectedTeamId) return;
+  if (sendMobileMsg({ type: "CANCEL_BUZZ", teamId: mobileSelectedTeamId })) {
+    showToast("回答を取り下げました");
+  }
+}
+
+function renderMobileUI() {
+  const selectStep = document.getElementById("mobileTeamSelectStep");
+  const buzzerStep = document.getElementById("mobileBuzzerStep");
+  const teams = (mobileHostState.teams && mobileHostState.teams.length > 0)
+    ? mobileHostState.teams
+    : DEFAULT_TEAMS;
+
+  if (mobileSelectedTeamId && !teams.some(t => t.id === mobileSelectedTeamId)) {
+    mobileSelectedTeamId = null;
+    if (mobileRoomId) {
+      try { sessionStorage.removeItem(`bounenkai_team_${mobileRoomId}`); } catch (e) {}
+    }
+  }
+
+  if (!mobileSelectedTeamId) {
+    selectStep.style.display = "block";
+    buzzerStep.style.display = "none";
+    document.getElementById("mobileTeamGrid").innerHTML = teams.map(t => `
+      <button type="button" class="btn-select-team" style="background:${t.color};" onclick="selectMobileTeam('${t.id}')">
+        <span>${escapeHtml(t.name)}</span>
+        <span style="font-size:14px;">参加する ▶</span>
+      </button>
+    `).join("");
+    return;
+  }
+
+  const myTeam = teams.find(t => t.id === mobileSelectedTeamId);
+  if (!myTeam) {
+    mobileSelectedTeamId = null;
+    renderMobileUI();
+    return;
+  }
+  mobileSelectedTeamId = myTeam.id;
+
+  selectStep.style.display = "none";
+  buzzerStep.style.display = "flex";
+  document.getElementById("mobileMyTeamName").textContent = myTeam.name;
+  document.getElementById("mobileMyTeamName").style.color = myTeam.color;
+  document.getElementById("mobileMyTeamScore").textContent = `${myTeam.score || 0} pt`;
+
+  const btn = document.getElementById("massiveBuzzerBtn");
+  const mainTxt = document.getElementById("buzzerMainText");
+  const subTxt = document.getElementById("buzzerSubText");
+  const withdrawBtn = document.getElementById("mobileWithdrawBtn");
+  btn.style.background = myTeam.color;
+
+  const isHostConnected = Boolean(((mobileConn && mobileConn.open) || mobileMqttConnected || mobileBroadcastConnected) && mobileHostState.syncedFromHost);
+  const isLocked = (mobileHostState.lockedTeams || []).includes(myTeam.id);
+  const isMyBuzz = mobileHostState.buzzedTeamId === myTeam.id;
+  const isOtherBuzz = mobileHostState.buzzedTeamId && !isMyBuzz;
+  const isBuzzerUnlocked = mobileHostState.buzzerOpen === true;
+
+  withdrawBtn.style.display = (isHostConnected && isMyBuzz) ? "block" : "none";
+
+  if (!isHostConnected) {
+    btn.disabled = true;
+    mainTxt.textContent = "⚠️ PCと未接続";
+    subTxt.textContent = "公開URL（https://〜）で開くか、右上の「再接続」を押してください";
+  } else if (isLocked) {
+    btn.disabled = true;
+    mainTxt.textContent = "お手つきロック中";
+    subTxt.textContent = "次の問題までお待ちください";
+  } else if (isMyBuzz) {
+    btn.disabled = true;
+    mainTxt.textContent = "🚨 解答権獲得！";
+    subTxt.textContent = "大きな声で曲名を答えてください！";
+  } else if (isOtherBuzz) {
+    btn.disabled = true;
+    const other = teams.find(t => t.id === mobileHostState.buzzedTeamId);
+    mainTxt.textContent = "他チーム解答中";
+    subTxt.textContent = `${other ? other.name : "別チーム"} が早押ししました`;
+  } else if (mobileHostState.gameState === "revealed") {
+    btn.disabled = true;
+    mainTxt.textContent = "正解発表中";
+    subTxt.textContent = "次の曲の準備をお待ちください";
+  } else if (!isBuzzerUnlocked) {
+    btn.disabled = true;
+    mainTxt.textContent = "🔒 解答ロック中";
+    subTxt.textContent = "司会者がロックを解除すると押せます";
+  } else {
+    btn.disabled = false;
+    mainTxt.textContent = "早押し！";
+    subTxt.textContent = "わかったら即タップ！！";
+  }
+}
+
+/* ============================================================================
+   10. UTILITIES, KEYBOARD SHORTCUTS & CONFETTI
+   ============================================================================ */
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+}
+
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+function launchConfetti() {
+  const canvas = document.getElementById("confettiCanvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const colors = ["#f59e0b", "#ef4444", "#10b981", "#3b82f6", "#ec4899", "#fde047"];
+  const pieces = Array.from({ length: 110 }, () => ({
+    x: Math.random() * canvas.width,
+    y: -20 - Math.random() * 200,
+    w: 8 + Math.random() * 8,
+    h: 5 + Math.random() * 6,
+    vy: 3 + Math.random() * 5,
+    vx: -2 + Math.random() * 4,
+    rot: Math.random() * 360,
+    vrot: -6 + Math.random() * 12,
+    color: colors[Math.floor(Math.random() * colors.length)]
+  }));
+
+  let frames = 0;
+  function step() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const p of pieces) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rot += p.vrot;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate((p.rot * Math.PI) / 180);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+    frames++;
+    if (frames < 150) requestAnimationFrame(step);
+    else ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  requestAnimationFrame(step);
+}
+
+document.addEventListener("keydown", (e) => {
+  if (document.getElementById("hostApp").style.display === "none") return;
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) return;
+
+  if (e.code === "Space") {
+    e.preventDefault();
+    if (state.gameState === "paused_wrong") {
+      resumeAfterWrong();
+    } else {
+      togglePlayPause();
+    }
+  } else if (e.key >= "1" && e.key <= "8") {
+    const idx = parseInt(e.key, 10) - 1;
+    if (state.teams[idx]) handleIncomingBuzz(state.teams[idx].id);
+  }
+});
+
+window.addEventListener("DOMContentLoaded", async () => {
+  AudioEngine.setOnEnded(() => {
+    if (state.gameState === "playing") state.gameState = "idle";
+    renderAllHostUI();
+    broadcastHostState();
+  });
+
+  const params = new URLSearchParams(window.location.search);
+  const roomParam = params.get("room");
+  if (roomParam !== null) {
+    initMobileMode(roomParam);
+  } else {
+    const restored = await restoreFromIndexedDB();
+    const track = currentTrack();
+    AudioEngine.setPosition(track, Math.max(0, Number(track.introSec) || 0));
+    renderAllHostUI();
+    initHostPeer();
+    if (restored) {
+      showToast("💾 前回の曲・音源・チーム設定を自動復元しました！");
+    }
+  }
+});
+</script>
+</body>
+</html>
